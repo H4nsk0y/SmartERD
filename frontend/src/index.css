@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Добавляем градиент для всей страницы */
+@layer base {
+  body {
+    @apply bg-gradient-to-br from-blue-100 via-indigo-100 to-indigo-200 min-h-screen;
+  }
+}
