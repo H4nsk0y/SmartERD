@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { Routes, Route, Link } from "react-router-dom";
 import { useAppStore } from "./store/useAppStore";
 import { useTranslation } from "react-i18next";
+import EditorPage from "./pages/EditorPage";
+
 
 function App() {
   const { theme, setTheme, language, setLanguage } = useAppStore();
@@ -61,7 +63,7 @@ function App() {
       {/* Основное содержимое */}
       <Routes>
         <Route path="/" element={<Home t={t} />} />
-        <Route path="/editor" element={<Editor t={t} />} />
+        <Route path="/editor" element={<EditorPage />} />
         <Route path="/settings" element={<Settings t={t} />} />
         <Route path="/ai" element={<AIHelper t={t} />} />
       </Routes>
