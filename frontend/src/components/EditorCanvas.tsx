@@ -1,5 +1,5 @@
 import { useERStore } from "../store/useERStore";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Size = { w: number; h: number };
 
@@ -13,6 +13,7 @@ export default function EditorCanvas() {
     removeAttribute,
     addRelationship,
     removeEntity,
+    renameEntity,
   } = useERStore();
 
   const [isAddingEntity, setIsAddingEntity] = useState(false);
@@ -20,71 +21,56 @@ export default function EditorCanvas() {
   const [selectedForLink, setSelectedForLink] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const [newAttrName, setNewAttrName] = useState("");
   const [newAttrType, setNewAttrType] = useState("");
 
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
 
-  // ===== Канвас-реф: координаты считаем только от него =====
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const [sizes, setSizes] = useState<Record<string, Size>>({});
 
-  // ===== DOM-refs карточек + размеры через ResizeObserver =====
-const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-
-  const [sizes, setSizes] = useState<Record<string, Size>>({}); // { [id]: {w,h} }
-
+  // === Автоматическая подстройка размеров карточек ===
   useEffect(() => {
     const observers: Record<string, ResizeObserver> = {};
-
-    // навесим наблюдателей на текущие карточки
     entities.forEach((e) => {
       const el = cardRefs.current[e.id];
       if (!el) return;
-
-      // первичный замер
       const rect = el.getBoundingClientRect();
-      setSizes((prev) =>
-        prev[e.id]?.w === rect.width && prev[e.id]?.h === rect.height
-          ? prev
-          : { ...prev, [e.id]: { w: rect.width, h: rect.height } }
-      );
-
-      // реакция на изменения размеров
+      setSizes((prev) => ({
+        ...prev,
+        [e.id]: { w: rect.width, h: rect.height },
+      }));
       const ro = new ResizeObserver((entries) => {
         for (const entry of entries) {
           const cr = entry.contentRect;
-          setSizes((prev) => {
-            const prevSize = prev[e.id];
-            if (prevSize && prevSize.w === cr.width && prevSize.h === cr.height) return prev;
-            return { ...prev, [e.id]: { w: cr.width, h: cr.height } };
-          });
+          setSizes((prev) => ({
+            ...prev,
+            [e.id]: { w: cr.width, h: cr.height },
+          }));
         }
       });
       ro.observe(el);
       observers[e.id] = ro;
     });
+    return () => Object.values(observers).forEach((ro) => ro.disconnect());
+  }, [entities, editingId]);
 
-    // очистка
-    return () => {
-      Object.values(observers).forEach((ro) => ro.disconnect());
-    };
-  }, [entities, editingId]); // при появлении/скрытии формы размеры меняются
-
-  // ===== Добавление сущности (координаты от canvasRef) =====
+  // === Добавление сущности ===
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isAddingEntity) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect(); // НЕ e.target!
+    const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     addEntity("Новая сущность", x, y);
     setIsAddingEntity(false);
   };
 
-  // ===== Перетаскивание сущностей =====
+  // === Перетаскивание ===
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>, id: string) => {
     e.stopPropagation();
     setDraggingId(id);
@@ -104,17 +90,16 @@ const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   const handleMouseUp = () => setDraggingId(null);
 
-  // ===== Атрибуты =====
+  // === Атрибуты ===
   const handleAddAttribute = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     if (!editingId || !newAttrName || !newAttrType) return;
     addAttribute(editingId, newAttrName, newAttrType);
     setNewAttrName("");
     setNewAttrType("");
-    setEditingId(null); // закрываем форму после добавления
   };
 
-  // ===== Связывание =====
+  // === Связывание ===
   const handleEntityClick = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isLinking) return;
@@ -126,7 +111,7 @@ const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
     }
   };
 
-  // ===== Точная точка стыка: пересечение луча с прямоугольником =====
+  // === Геометрия ===
   function edgePointRayIntersect(
     rectCenter: { x: number; y: number },
     targetCenter: { x: number; y: number },
@@ -140,19 +125,18 @@ const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
     const absX = Math.abs(vx);
     const absY = Math.abs(vy);
-    const scale = 1 / Math.max(absX / halfW, absY / halfH); // точка ровно на границе
+    const scale = 1 / Math.max(absX / halfW, absY / halfH);
 
     let ex = rectCenter.x + vx * scale;
     let ey = rectCenter.y + vy * scale;
 
     const len = Math.hypot(vx, vy);
-    ex += (vx / len) * pad; // чуть наружу, чтобы не пряталось под рамку
+    ex += (vx / len) * pad;
     ey += (vy / len) * pad;
-
     return { x: ex, y: ey };
   }
 
-  // ===== Рендер =====
+  // === Рендер ===
   return (
     <div
       ref={canvasRef}
@@ -207,31 +191,29 @@ const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
           const th = sizes[to.id]?.h ?? 80;
 
           const fromC = { x: from.x + fw / 2, y: from.y + fh / 2 };
-          const toC   = { x: to.x + tw / 2,  y: to.y + th / 2 };
+          const toC = { x: to.x + tw / 2, y: to.y + th / 2 };
 
           const p1 = edgePointRayIntersect(fromC, toC, fw / 2, fh / 2, 6);
           const p2 = edgePointRayIntersect(toC, fromC, tw / 2, th / 2, 6);
 
           const horizontalFirst = Math.abs(p1.x - p2.x) > Math.abs(p1.y - p2.y);
-          let d: string;
-          if (horizontalFirst) {
-            const midX = (p1.x + p2.x) / 2;
-            d = `M ${p1.x} ${p1.y} L ${midX} ${p1.y} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
-          } else {
-            const midY = (p1.y + p2.y) / 2;
-            d = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
-          }
+          const d = horizontalFirst
+            ? `M ${p1.x} ${p1.y} L ${(p1.x + p2.x) / 2} ${p1.y} L ${(p1.x + p2.x) / 2} ${p2.y} L ${p2.x} ${p2.y}`
+            : `M ${p1.x} ${p1.y} L ${p1.x} ${(p1.y + p2.y) / 2} L ${p2.x} ${(p1.y + p2.y) / 2} L ${p2.x} ${p2.y}`;
+
+          const isActive = selectedForLink && (r.from === selectedForLink || r.to === selectedForLink);
 
           return (
             <path
               key={r.id}
               d={d}
               fill="none"
-              stroke="#6366f1"
-              strokeWidth="2.5"
+              stroke={isActive ? "#9333ea" : "#6366f1"} // ярче активные связи
+              strokeWidth={isActive ? 3 : 2}
               markerEnd="url(#arrow)"
-              className="transition-all duration-75"
-            />
+            >
+              <title>{r.type}</title>
+            </path>
           );
         })}
       </svg>
@@ -241,44 +223,78 @@ const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
         <div
           key={entity.id}
           ref={(el) => { cardRefs.current[entity.id] = el; }}
-          className={`absolute z-20 w-56 bg-white dark:bg-gray-800 shadow-md rounded-lg border ${
-            selectedForLink === entity.id ? "border-purple-500" : "border-indigo-400"
-          } text-left select-none p-2`}
+          className={`absolute z-20 w-56 bg-white dark:bg-gray-800 shadow-md rounded-lg border 
+            ${
+              selectedForLink === entity.id
+                ? "border-purple-600 ring-2 ring-purple-300"
+                : "border-indigo-400 hover:border-indigo-600"
+            }
+            text-left select-none p-2`}
           style={{ left: entity.x, top: entity.y }}
           onMouseDown={(e) => handleMouseDown(e, entity.id)}
           onClick={(e) => handleEntityClick(entity.id, e)}
         >
-          {/* Заголовок */}
+          {/* === Заголовок === */}
           <div
             className="flex justify-between items-center cursor-move active:cursor-grabbing"
             onMouseDown={(e) => handleMouseDown(e, entity.id)}
           >
-            <p className="font-semibold text-indigo-700 dark:text-indigo-300">{entity.name}</p>
-            <button
-              onMouseDown={(e) => e.stopPropagation()}
-               onClick={(e) => {
-                e.stopPropagation();
-                  removeEntity(entity.id);
-                        }}
-              className="text-sm text-red-500 hover:text-red-700 ml-2"
-                  >
-                🗑
-               </button>
+            {renamingId === entity.id ? (
+              <input
+                autoFocus
+                defaultValue={entity.name}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    renameEntity(entity.id, (e.target as HTMLInputElement).value.trim() || entity.name);
+                    setRenamingId(null);
+                  }
+                  if (e.key === "Escape") setRenamingId(null);
+                }}
+                onBlur={(e) => {
+                  renameEntity(entity.id, e.target.value.trim() || entity.name);
+                  setRenamingId(null);
+                }}
+                className="font-semibold text-indigo-700 dark:text-indigo-300 bg-transparent border-b border-indigo-400 focus:outline-none focus:border-indigo-600 w-32"
+              />
+            ) : (
+              <p
+                className="font-semibold text-indigo-700 dark:text-indigo-300 cursor-text"
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setRenamingId(entity.id);
+                }}
+              >
+                {entity.name}
+              </p>
+            )}
 
-            <button
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditingId((cur) => (cur === entity.id ? null : entity.id));
-              }}
-              className="text-sm text-gray-500 hover:text-indigo-500"
-            >
-              ⚙️
-            </button>
-            
+            <div className="flex items-center gap-2">
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingId((cur) => (cur === entity.id ? null : entity.id));
+                }}
+                className="text-sm text-gray-500 hover:text-indigo-500"
+              >
+                ⚙️
+              </button>
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeEntity(entity.id);
+                }}
+                className="text-sm text-red-500 hover:text-red-700"
+              >
+                🗑
+              </button>
+            </div>
           </div>
 
-          {/* Атрибуты */}
+          {/* === Атрибуты === */}
           <ul className="mt-1 text-sm text-gray-700 dark:text-gray-300">
             {entity.attributes.map((a) => (
               <li
@@ -288,10 +304,7 @@ const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
                 <span>{a.name}: {a.type}</span>
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeAttribute(entity.id, a.id);
-                  }}
+                  onClick={() => removeAttribute(entity.id, a.id)}
                   className="text-red-500 hover:text-red-700 text-xs"
                 >
                   ✖
@@ -300,7 +313,7 @@ const cardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
             ))}
           </ul>
 
-          {/* Форма добавления атрибута */}
+          {/* === Форма добавления атрибутов === */}
           {editingId === entity.id && (
             <div
               className="mt-2 border-t border-gray-300 dark:border-gray-700 pt-2"
