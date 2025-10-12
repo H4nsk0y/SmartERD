@@ -1,6 +1,9 @@
+// src/store/useERStore.ts
 import { create } from "zustand";
+import { nanoid } from "nanoid";
 
-/* ---------- Типы данных для ER-диаграммы ---------- */
+/* ---------- Типы ---------- */
+
 export interface Attribute {
   id: string;
   name: string;
@@ -10,105 +13,111 @@ export interface Attribute {
 export interface Entity {
   id: string;
   name: string;
-  x: number; // позиция на холсте
+  x: number;
   y: number;
   attributes: Attribute[];
 }
 
 export interface Relationship {
   id: string;
-  from: string; // id первой сущности
-  to: string;   // id второй сущности
+  from: string;
+  to: string;
   type: "one-to-one" | "one-to-many" | "many-to-many";
 }
 
-/* ---------- Интерфейс состояния ---------- */
 interface ERState {
   entities: Entity[];
   relationships: Relationship[];
 
   addEntity: (name: string, x: number, y: number) => void;
-  removeEntity: (id: string) => void;
   updateEntityPosition: (id: string, x: number, y: number) => void;
 
-  addRelationship: (from: string, to: string, type: Relationship["type"]) => void;
-
   addAttribute: (entityId: string, name: string, type: string) => void;
-  removeAttribute: (entityId: string, attributeId: string) => void;
+  removeAttribute: (entityId: string, attrId: string) => void;
+
+  addRelationship: (from: string, to: string, type: Relationship["type"]) => void;
+  removeRelationship: (id: string) => void;
+
+
+  removeEntity: (id: string) => void;
+
+  
+  renameEntity: (id: string, newName: string) => void;
 }
 
 /* ---------- Zustand Store ---------- */
+
 export const useERStore = create<ERState>((set) => ({
   entities: [],
   relationships: [],
 
-  /* --- Добавление новой сущности --- */
   addEntity: (name, x, y) =>
-    set((state) => ({
+    set((s) => ({
       entities: [
-        ...state.entities,
-        {
-          id: crypto.randomUUID(),
-          name,
-          x,
-          y,
-          attributes: [],
-        },
+        ...s.entities,
+        { id: nanoid(), name, x, y, attributes: [] },
       ],
     })),
 
-  /* --- Удаление сущности и связанных связей --- */
-  removeEntity: (id) =>
-    set((state) => ({
-      entities: state.entities.filter((e) => e.id !== id),
-      relationships: state.relationships.filter(
-        (r) => r.from !== id && r.to !== id
-      ),
-    })),
-
-  /* --- Обновление позиции сущности (при перетаскивании) --- */
   updateEntityPosition: (id, x, y) =>
-    set((state) => ({
-      entities: state.entities.map((e) =>
+    set((s) => ({
+      entities: s.entities.map((e) =>
         e.id === id ? { ...e, x, y } : e
       ),
     })),
 
-  /* --- Добавление новой связи --- */
-  addRelationship: (from, to, type) =>
-    set((state) => ({
-      relationships: [
-        ...state.relationships,
-        { id: crypto.randomUUID(), from, to, type },
-      ],
-    })),
-
-  /* --- Добавление атрибута в сущность --- */
   addAttribute: (entityId, name, type) =>
-    set((state) => ({
-      entities: state.entities.map((e) =>
+    set((s) => ({
+      entities: s.entities.map((e) =>
         e.id === entityId
           ? {
               ...e,
               attributes: [
                 ...e.attributes,
-                { id: crypto.randomUUID(), name, type },
+                { id: nanoid(), name, type },
               ],
             }
           : e
       ),
     })),
 
-  /* --- Удаление атрибута из сущности --- */
-  removeAttribute: (entityId, attributeId) =>
-    set((state) => ({
-      entities: state.entities.map((e) =>
+  removeAttribute: (entityId, attrId) =>
+    set((s) => ({
+      entities: s.entities.map((e) =>
         e.id === entityId
           ? {
               ...e,
-              attributes: e.attributes.filter((a) => a.id !== attributeId),
+              attributes: e.attributes.filter((a) => a.id !== attrId),
             }
           : e
+      ),
+    })),
+
+  addRelationship: (from, to, type) =>
+    set((s) => ({
+      relationships: [
+        ...s.relationships,
+        { id: nanoid(), from, to, type },
+      ],
+    })),
+
+  removeRelationship: (id) =>
+    set((s) => ({
+      relationships: s.relationships.filter((r) => r.id !== id),
+    })),
+
+  removeEntity: (id) =>
+    set((s) => ({
+      entities: s.entities.filter((e) => e.id !== id),
+      relationships: s.relationships.filter(
+        (r) => r.from !== id && r.to !== id
+      ),
+    })),
+
+  renameEntity: (id, newName) =>
+    set((s) => ({
+      entities: s.entities.map((e) =>
+        e.id === id ? { ...e, name: newName } : e
       ),
     })),
 }));
