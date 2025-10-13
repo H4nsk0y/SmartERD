@@ -29,20 +29,23 @@ interface ERState {
   entities: Entity[];
   relationships: Relationship[];
 
+  // --- сущности ---
   addEntity: (name: string, x: number, y: number) => void;
   updateEntityPosition: (id: string, x: number, y: number) => void;
+  removeEntity: (id: string) => void;
+  renameEntity: (id: string, newName: string) => void;
 
+  // --- атрибуты ---
   addAttribute: (entityId: string, name: string, type: string) => void;
   removeAttribute: (entityId: string, attrId: string) => void;
 
+  // --- связи ---
   addRelationship: (from: string, to: string, type: Relationship["type"]) => void;
   removeRelationship: (id: string) => void;
 
-
-  removeEntity: (id: string) => void;
-
-  
-  renameEntity: (id: string, newName: string) => void;
+  // --- взаимодействие с линиями ---
+  selectedRelationshipId: string | null;
+  setSelectedRelationship: (id: string | null) => void;
 }
 
 /* ---------- Zustand Store ---------- */
@@ -51,6 +54,7 @@ export const useERStore = create<ERState>((set) => ({
   entities: [],
   relationships: [],
 
+  /* ---------- Сущности ---------- */
   addEntity: (name, x, y) =>
     set((s) => ({
       entities: [
@@ -66,6 +70,22 @@ export const useERStore = create<ERState>((set) => ({
       ),
     })),
 
+  removeEntity: (id) =>
+    set((s) => ({
+      entities: s.entities.filter((e) => e.id !== id),
+      relationships: s.relationships.filter(
+        (r) => r.from !== id && r.to !== id
+      ),
+    })),
+
+  renameEntity: (id, newName) =>
+    set((s) => ({
+      entities: s.entities.map((e) =>
+        e.id === id ? { ...e, name: newName } : e
+      ),
+    })),
+
+  /* ---------- Атрибуты ---------- */
   addAttribute: (entityId, name, type) =>
     set((s) => ({
       entities: s.entities.map((e) =>
@@ -93,6 +113,7 @@ export const useERStore = create<ERState>((set) => ({
       ),
     })),
 
+  /* ---------- Связи ---------- */
   addRelationship: (from, to, type) =>
     set((s) => ({
       relationships: [
@@ -106,18 +127,8 @@ export const useERStore = create<ERState>((set) => ({
       relationships: s.relationships.filter((r) => r.id !== id),
     })),
 
-  removeEntity: (id) =>
-    set((s) => ({
-      entities: s.entities.filter((e) => e.id !== id),
-      relationships: s.relationships.filter(
-        (r) => r.from !== id && r.to !== id
-      ),
-    })),
+  /* ---------- Наведение и выбор связей ---------- */
+  selectedRelationshipId: null,
 
-  renameEntity: (id, newName) =>
-    set((s) => ({
-      entities: s.entities.map((e) =>
-        e.id === id ? { ...e, name: newName } : e
-      ),
-    })),
+  setSelectedRelationship: (id) => set({ selectedRelationshipId: id }),
 }));
