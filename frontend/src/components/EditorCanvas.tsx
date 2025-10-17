@@ -1,5 +1,5 @@
 import { useERStore } from "../store/useERStore";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, createElement } from "react";
 
 type Size = { w: number; h: number };
 
@@ -16,6 +16,7 @@ export default function EditorCanvas() {
     renameEntity,
     selectedRelationshipId,
     setSelectedRelationship,
+    updateRelationshipType,
   } = useERStore();
 
   const [isAddingEntity, setIsAddingEntity] = useState(false);
@@ -24,6 +25,7 @@ export default function EditorCanvas() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [hoveredRel, setHoveredRel] = useState<string | null>(null);
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
   const [newAttrName, setNewAttrName] = useState("");
   const [newAttrType, setNewAttrType] = useState("");
@@ -31,7 +33,7 @@ export default function EditorCanvas() {
   const dragOffset = useRef({ x: 0, y: 0 });
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const cardRefs = useRef<Record<string, HTMLDivElement>>({});
   const [sizes, setSizes] = useState<Record<string, Size>>({});
 
   const GRID_SIZE = 32;
@@ -89,6 +91,26 @@ export default function EditorCanvas() {
 
   const handleMouseUp = () => setDraggingId(null);
 
+  /* === Экспорт в JSON === */
+const handleExportJSON = () => {
+  const data = {
+    entities,
+    relationships,
+  };
+
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "diagram.json";
+  a.click();
+
+  URL.revokeObjectURL(url);
+};
+
+
   /* === Атрибуты === */
   const handleAddAttribute = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
@@ -111,39 +133,31 @@ export default function EditorCanvas() {
   };
 
   /* === Геометрия === */
- function edgePointRayIntersect(
-  rectCenter: { x: number; y: number },
-  targetCenter: { x: number; y: number },
-  halfW: number,
-  halfH: number,
-  pad = 8
-) {
-  const dx = targetCenter.x - rectCenter.x;
-  const dy = targetCenter.y - rectCenter.y;
+  function edgePointRayIntersect(
+    rectCenter: { x: number; y: number },
+    targetCenter: { x: number; y: number },
+    halfW: number,
+    halfH: number,
+    pad = 8
+  ) {
+    const dx = targetCenter.x - rectCenter.x;
+    const dy = targetCenter.y - rectCenter.y;
+    if (dx === 0 && dy === 0) return rectCenter;
 
-  if (dx === 0 && dy === 0) return rectCenter;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    const scaleX = halfW / absDx;
+    const scaleY = halfH / absDy;
+    const t = Math.min(scaleX, scaleY);
 
-  // нормализуем направление
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-  const scaleX = halfW / absDx;
-  const scaleY = halfH / absDy;
+    let ex = rectCenter.x + dx * t;
+    let ey = rectCenter.y + dy * t;
 
-  // выбираем, какая грань пересекается раньше (по x или y)
-  const t = Math.min(scaleX, scaleY);
-
-  // координаты точки на краю
-  let ex = rectCenter.x + dx * t;
-  let ey = rectCenter.y + dy * t;
-
-  // выталкиваем наружу на безопасное расстояние (чтобы стрелка не пряталась)
-  const len = Math.hypot(dx, dy);
-  ex += (dx / len) * pad;
-  ey += (dy / len) * pad;
-
-  return { x: ex, y: ey };
-}
-
+    const len = Math.hypot(dx, dy);
+    ex += (dx / len) * pad;
+    ey += (dy / len) * pad;
+    return { x: ex, y: ey };
+  }
 
   /* === Рендер === */
   return (
@@ -179,21 +193,21 @@ export default function EditorCanvas() {
         >
           🔗 Связь
         </button>
+        
+        <button
+        onClick={handleExportJSON}
+        className="px-4 py-2 rounded-lg text-white bg-green-600 hover:bg-green-700"
+                                            >
+          💾 Экспорт JSON
+          </button>
+
       </div>
 
       {/* SVG связи */}
       <svg className="absolute inset-0 z-10 w-full h-full">
         <defs>
-          <marker
-            id="arrow"
-            markerWidth="10"
-            markerHeight="10"
-            refX="8"
-            refY="3"
-            orient="auto"
-            markerUnits="strokeWidth"
-          >
-            <path d="M0,0 L0,6 L9,3 z" fill="#a78bfa" />
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L9,3 z" fill="#6366f1" />
           </marker>
         </defs>
 
@@ -213,74 +227,111 @@ export default function EditorCanvas() {
           const p1 = edgePointRayIntersect(fromC, toC, fw / 2, fh / 2);
           const p2 = edgePointRayIntersect(toC, fromC, tw / 2, th / 2);
 
-          const horizontalFirst = Math.abs(p1.x - p2.x) > Math.abs(p1.y - p2.y);
-          const d = horizontalFirst
-            ? `M ${p1.x} ${p1.y} L ${(p1.x + p2.x) / 2} ${p1.y} L ${(p1.x + p2.x) / 2} ${p2.y} L ${p2.x} ${p2.y}`
-            : `M ${p1.x} ${p1.y} L ${p1.x} ${(p1.y + p2.y) / 2} L ${p2.x} ${(p1.y + p2.y) / 2} L ${p2.x} ${p2.y}`;
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
 
-          const isSelected =
-            r.id === selectedRelationshipId ||
-            (editingId && (r.from === editingId || r.to === editingId));
-
-          const isHovered = hoveredRel === r.id;
-          const strokeColor = isSelected ? "#a78bfa" : isHovered ? "#8b5cf6" : "#6366f1";
-          const strokeDash = isSelected ? "6,8" : "none";
-          const animateId = `anim-${r.id}`;
+          const color =
+            r.type === "one-to-one"
+              ? "#22c55e"
+              : r.type === "one-to-many"
+              ? "#3b82f6"
+              : "#f59e0b";
 
           return (
-            <>
-              {isSelected && (
-                <style>{`
-                  @keyframes ${animateId} {
-                    0% { stroke-dashoffset: 0; }
-                    100% { stroke-dashoffset: -28; }
-                  }
-                `}</style>
-              )}
+            <g key={r.id}>
               <path
-                key={r.id}
-                d={d}
+                d={`M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`}
                 fill="none"
-                stroke={strokeColor}
-                strokeWidth={2.5}
-                strokeDasharray={strokeDash}
+                stroke={color}
+                strokeWidth="2.5"
                 markerEnd="url(#arrow)"
-                strokeLinecap="round"
-                style={
-                  isSelected
-                    ? {
-                        animation: `${animateId} 1.3s linear infinite`,
-                        filter: "drop-shadow(0 0 6px rgba(167,139,250,0.8))",
-                      }
-                    : isHovered
-                    ? { filter: "drop-shadow(0 0 4px rgba(139,92,246,0.6))" }
-                    : {}
-                }
-                onMouseEnter={() => setHoveredRel(r.id)}
-                onMouseLeave={() => setHoveredRel(null)}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setSelectedRelationship(isSelected ? null : r.id);
+                  setSelectedRelationship(selectedRelationshipId === r.id ? null : r.id);
                 }}
-                className="cursor-pointer transition-all duration-150"
+                onMouseEnter={() => setHoveredRel(r.id)}
+                onMouseLeave={() => setHoveredRel(null)}
+                className="cursor-pointer"
+              />
+
+              {/* === Метка типа связи === */}
+              <foreignObject
+                x={midX - 20}
+                y={midY - 15}
+                width={60}
+                height={40}
+                className="overflow-visible"
+                style={{ pointerEvents: "auto", overflow: "visible" }}
               >
-                <title>{r.type}</title>
-              </path>
-            </>
+                {createElement(
+                  "div",
+                  {
+                    xmlns: "http://www.w3.org/1999/xhtml",
+                    className:
+                      "bg-white text-xs border border-indigo-400 rounded px-1 py-0.5 text-center cursor-pointer hover:bg-indigo-50 select-none relative",
+                    onClick: (e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      setActiveMenu(activeMenu === r.id ? null : r.id);
+                    },
+                  },
+                  <>
+                    {r.type === "one-to-one"
+                      ? "1:1"
+                      : r.type === "one-to-many"
+                      ? "1:N"
+                      : "N:M"}
+
+                    {activeMenu === r.id && (
+                      <div
+                        className="absolute left-1/2 -translate-x-1/2 top-5 bg-white border border-indigo-300 rounded shadow-lg z-50 w-16 text-xs"
+                        style={{ pointerEvents: "auto" }}
+                      >
+                        <div
+                          className="px-2 py-1 hover:bg-indigo-100 cursor-pointer"
+                          onClick={() => {
+                            updateRelationshipType(r.id, "one-to-one");
+                            setActiveMenu(null);
+                          }}
+                        >
+                          1:1
+                        </div>
+                        <div
+                          className="px-2 py-1 hover:bg-indigo-100 cursor-pointer"
+                          onClick={() => {
+                            updateRelationshipType(r.id, "one-to-many");
+                            setActiveMenu(null);
+                          }}
+                        >
+                          1:N
+                        </div>
+                        <div
+                          className="px-2 py-1 hover:bg-indigo-100 cursor-pointer"
+                          onClick={() => {
+                            updateRelationshipType(r.id, "many-to-many");
+                            setActiveMenu(null);
+                          }}
+                        >
+                          N:M
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </foreignObject>
+            </g>
           );
         })}
       </svg>
 
-      {/* Карточки */}
+      {/* === Карточки === */}
       {entities.map((entity) => (
         <div
           key={entity.id}
           ref={(el) => {
             if (el) cardRefs.current[entity.id] = el;
-              else delete cardRefs.current[entity.id];
-              }}
-
-          className={`absolute z-20 w-56 shadow-md rounded-lg border select-none p-2 transition-all duration-150 ease-out transform
+            else delete cardRefs.current[entity.id];
+          }}
+          className={`absolute z-20 w-56 shadow-md rounded-lg border select-none p-2
             ${
               selectedForLink === entity.id ||
               relationships.some(
@@ -288,10 +339,10 @@ export default function EditorCanvas() {
                   r.id === selectedRelationshipId &&
                   (r.from === entity.id || r.to === entity.id)
               )
-                ? "border-purple-500 ring-2 ring-purple-400 bg-indigo-50 dark:bg-indigo-900/30 scale-[1.02]"
+                ? "border-purple-500 ring-2 ring-purple-400 bg-indigo-50 scale-[1.02]"
                 : "border-indigo-400 hover:border-indigo-600 hover:scale-[1.02] hover:shadow-lg"
             }
-            bg-white dark:bg-gray-800 text-left`}
+            bg-white text-left transition-all duration-150 ease-out`}
           style={{ left: entity.x, top: entity.y }}
           onMouseDown={(e) => handleMouseDown(e, entity.id)}
           onClick={(e) => handleEntityClick(entity.id, e)}
@@ -309,10 +360,7 @@ export default function EditorCanvas() {
                 onMouseDown={(e) => e.stopPropagation()}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    renameEntity(
-                      entity.id,
-                      (e.target as HTMLInputElement).value.trim() || entity.name
-                    );
+                    renameEntity(entity.id, (e.target as HTMLInputElement).value.trim() || entity.name);
                     setRenamingId(null);
                   }
                   if (e.key === "Escape") setRenamingId(null);
@@ -321,11 +369,11 @@ export default function EditorCanvas() {
                   renameEntity(entity.id, e.target.value.trim() || entity.name);
                   setRenamingId(null);
                 }}
-                className="font-semibold text-indigo-700 dark:text-indigo-300 bg-transparent border-b border-indigo-400 focus:outline-none focus:border-indigo-600 w-32"
+                className="font-semibold text-indigo-700 bg-transparent border-b border-indigo-400 focus:outline-none w-32"
               />
             ) : (
               <p
-                className="font-semibold text-indigo-700 dark:text-indigo-300 cursor-text"
+                className="font-semibold text-indigo-700 cursor-text"
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   setRenamingId(entity.id);
@@ -359,12 +407,12 @@ export default function EditorCanvas() {
             </div>
           </div>
 
-          {/* Атрибуты */}
-          <ul className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+          {/* === Атрибуты === */}
+          <ul className="mt-1 text-sm text-gray-700">
             {entity.attributes.map((a) => (
               <li
                 key={a.id}
-                className="flex justify-between items-center border-t border-gray-200 dark:border-gray-700 pt-1 mt-1"
+                className="flex justify-between items-center border-t border-gray-200 pt-1 mt-1"
               >
                 <span>
                   {a.name}: {a.type}
@@ -380,10 +428,10 @@ export default function EditorCanvas() {
             ))}
           </ul>
 
-          {/* Добавление атрибутов */}
+          {/* === Добавление атрибутов === */}
           {editingId === entity.id && (
             <div
-              className="mt-2 border-t border-gray-300 dark:border-gray-700 pt-2"
+              className="mt-2 border-t border-gray-300 pt-2"
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
@@ -410,7 +458,7 @@ export default function EditorCanvas() {
         </div>
       ))}
 
-      {/* Сетка */}
+      {/* === Сетка === */}
       <div
         className="absolute inset-0 pointer-events-none opacity-25 
         bg-[linear-gradient(to_right,#9ca3af_1px,transparent_1px),

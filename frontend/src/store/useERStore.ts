@@ -42,6 +42,7 @@ interface ERState {
   // --- связи ---
   addRelationship: (from: string, to: string, type: Relationship["type"]) => void;
   removeRelationship: (id: string) => void;
+  updateRelationshipType: (id: string, newType: Relationship["type"]) => void;
 
   // --- взаимодействие с линиями ---
   selectedRelationshipId: string | null;
@@ -125,6 +126,13 @@ export const useERStore = create<ERState>((set) => ({
   removeRelationship: (id) =>
     set((s) => ({
       relationships: s.relationships.filter((r) => r.id !== id),
+    })),
+
+  updateRelationshipType: (id, newType) =>
+    set((s) => ({
+      relationships: s.relationships.map((r) =>
+        r.id === id ? { ...r, type: newType } : r
+      ),
     })),
 
   /* ---------- Наведение и выбор связей ---------- */
