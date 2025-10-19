@@ -1,5 +1,6 @@
+// src/components/EditorCanvas.tsx
 import { useERStore } from "../store/useERStore";
-import { useEffect, useRef, useState, createElement } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Size = { w: number; h: number };
 
@@ -17,6 +18,8 @@ export default function EditorCanvas() {
     selectedRelationshipId,
     setSelectedRelationship,
     updateRelationshipType,
+    setDiagramData,
+    clearAll,
   } = useERStore();
 
   const [isAddingEntity, setIsAddingEntity] = useState(false);
@@ -33,7 +36,7 @@ export default function EditorCanvas() {
   const dragOffset = useRef({ x: 0, y: 0 });
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  const cardRefs = useRef<Record<string, HTMLDivElement>>({});
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [sizes, setSizes] = useState<Record<string, Size>>({});
 
   const GRID_SIZE = 32;
@@ -91,26 +94,6 @@ export default function EditorCanvas() {
 
   const handleMouseUp = () => setDraggingId(null);
 
-  /* === Экспорт в JSON === */
-const handleExportJSON = () => {
-  const data = {
-    entities,
-    relationships,
-  };
-
-  const json = JSON.stringify(data, null, 2);
-  const blob = new Blob([json], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "diagram.json";
-  a.click();
-
-  URL.revokeObjectURL(url);
-};
-
-
   /* === Атрибуты === */
   const handleAddAttribute = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
@@ -159,6 +142,44 @@ const handleExportJSON = () => {
     return { x: ex, y: ey };
   }
 
+  /* === Экспорт JSON === */
+  const handleExportJSON = () => {
+    const data = { entities, relationships };
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "diagram.json";
+    a.click();
+
+    URL.revokeObjectURL(url);
+  };
+
+  /* === Импорт JSON === */
+  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const data = JSON.parse(text);
+        if (data.entities && data.relationships) {
+          setDiagramData(data.entities, data.relationships);
+        } else {
+          alert("Некорректный JSON-файл");
+        }
+      } catch {
+        alert("Ошибка при чтении файла");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
   /* === Рендер === */
   return (
     <div
@@ -193,20 +214,41 @@ const handleExportJSON = () => {
         >
           🔗 Связь
         </button>
-        
         <button
-        onClick={handleExportJSON}
-        className="px-4 py-2 rounded-lg text-white bg-green-600 hover:bg-green-700"
-                                            >
+          onClick={handleExportJSON}
+          className="px-4 py-2 rounded-lg text-white bg-green-600 hover:bg-green-700"
+        >
           💾 Экспорт JSON
-          </button>
-
+        </button>
+        <label className="px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 cursor-pointer">
+          📂 Импорт JSON
+          <input
+            type="file"
+            accept=".json"
+            onChange={handleImportJSON}
+            className="hidden"
+          />
+        </label>
+        <button
+          onClick={clearAll}
+          className="px-4 py-2 rounded-lg text-white bg-red-500 hover:bg-red-600"
+        >
+          🗑 Очистить
+        </button>
       </div>
 
       {/* SVG связи */}
       <svg className="absolute inset-0 z-10 w-full h-full">
         <defs>
-          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <marker
+            id="arrow"
+            markerWidth="10"
+            markerHeight="10"
+            refX="8"
+            refY="3"
+            orient="auto"
+            markerUnits="strokeWidth"
+          >
             <path d="M0,0 L0,6 L9,3 z" fill="#6366f1" />
           </marker>
         </defs>
@@ -230,100 +272,96 @@ const handleExportJSON = () => {
           const midX = (p1.x + p2.x) / 2;
           const midY = (p1.y + p2.y) / 2;
 
-          const color =
-            r.type === "one-to-one"
-              ? "#22c55e"
-              : r.type === "one-to-many"
-              ? "#3b82f6"
-              : "#f59e0b";
+          const isSelected = r.id === selectedRelationshipId;
+          const strokeColor = isSelected ? "#a78bfa" : hoveredRel === r.id ? "#8b5cf6" : "#6366f1";
 
           return (
             <g key={r.id}>
               <path
                 d={`M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`}
                 fill="none"
-                stroke={color}
+                stroke={strokeColor}
                 strokeWidth="2.5"
                 markerEnd="url(#arrow)"
+                className="cursor-pointer transition-all"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setSelectedRelationship(selectedRelationshipId === r.id ? null : r.id);
+                  setSelectedRelationship(isSelected ? null : r.id);
                 }}
                 onMouseEnter={() => setHoveredRel(r.id)}
                 onMouseLeave={() => setHoveredRel(null)}
-                className="cursor-pointer"
               />
 
-              {/* === Метка типа связи === */}
-              <foreignObject
-                x={midX - 20}
-                y={midY - 15}
-                width={60}
-                height={40}
-                className="overflow-visible"
-                style={{ pointerEvents: "auto", overflow: "visible" }}
-              >
-                {createElement(
-                  "div",
-                  {
-                    xmlns: "http://www.w3.org/1999/xhtml",
-                    className:
-                      "bg-white text-xs border border-indigo-400 rounded px-1 py-0.5 text-center cursor-pointer hover:bg-indigo-50 select-none relative",
-                    onClick: (e: React.MouseEvent) => {
-                      e.stopPropagation();
-                      setActiveMenu(activeMenu === r.id ? null : r.id);
-                    },
-                  },
-                  <>
-                    {r.type === "one-to-one"
-                      ? "1:1"
-                      : r.type === "one-to-many"
-                      ? "1:N"
-                      : "N:M"}
+              {/* === Метка типа связи с выпадающим меню === */}
+<foreignObject
+  x={midX - 18}
+  y={midY - 15}
+  width={40}
+  height={25}
+  style={{ pointerEvents: "auto", overflow: "visible" }}
+>
+  <div
+    className="relative z-50 bg-white dark:bg-gray-800 text-xs border border-indigo-400 
+               rounded px-1 py-0.5 text-center cursor-pointer 
+               hover:bg-indigo-100 dark:hover:bg-indigo-700 select-none 
+               shadow-sm dark:shadow-[0_0_6px_rgba(167,139,250,0.4)]"
+    onClick={(e) => {
+      e.stopPropagation();
+      setActiveMenu(activeMenu === r.id ? null : r.id);
+    }}
+  >
+    <span className="text-indigo-700 dark:text-indigo-200 font-semibold">
+      {r.type === "one-to-one"
+        ? "1:1"
+        : r.type === "one-to-many"
+        ? "1:N"
+        : "N:M"}
+    </span>
 
-                    {activeMenu === r.id && (
-                      <div
-                        className="absolute left-1/2 -translate-x-1/2 top-5 bg-white border border-indigo-300 rounded shadow-lg z-50 w-16 text-xs"
-                        style={{ pointerEvents: "auto" }}
-                      >
-                        <div
-                          className="px-2 py-1 hover:bg-indigo-100 cursor-pointer"
-                          onClick={() => {
-                            updateRelationshipType(r.id, "one-to-one");
-                            setActiveMenu(null);
-                          }}
-                        >
-                          1:1
-                        </div>
-                        <div
-                          className="px-2 py-1 hover:bg-indigo-100 cursor-pointer"
-                          onClick={() => {
-                            updateRelationshipType(r.id, "one-to-many");
-                            setActiveMenu(null);
-                          }}
-                        >
-                          1:N
-                        </div>
-                        <div
-                          className="px-2 py-1 hover:bg-indigo-100 cursor-pointer"
-                          onClick={() => {
-                            updateRelationshipType(r.id, "many-to-many");
-                            setActiveMenu(null);
-                          }}
-                        >
-                          N:M
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </foreignObject>
+    {activeMenu === r.id && (
+      <div
+        className="absolute top-6 left-1/2 -translate-x-1/2 z-[9999] 
+                   bg-white dark:bg-gray-800 border border-indigo-300 dark:border-gray-600 
+                   rounded shadow-lg text-xs w-16"
+      >
+        <div
+          className="px-2 py-1 hover:bg-indigo-100 dark:hover:bg-gray-700 cursor-pointer"
+          onClick={() => {
+            updateRelationshipType(r.id, "one-to-one");
+            setActiveMenu(null);
+          }}
+        >
+          1:1
+        </div>
+        <div
+          className="px-2 py-1 hover:bg-indigo-100 dark:hover:bg-gray-700 cursor-pointer"
+          onClick={() => {
+            updateRelationshipType(r.id, "one-to-many");
+            setActiveMenu(null);
+          }}
+        >
+          1:N
+        </div>
+        <div
+          className="px-2 py-1 hover:bg-indigo-100 dark:hover:bg-gray-700 cursor-pointer"
+          onClick={() => {
+            updateRelationshipType(r.id, "many-to-many");
+            setActiveMenu(null);
+          }}
+        >
+          N:M
+        </div>
+      </div>
+    )}
+  </div>
+</foreignObject>
+
             </g>
           );
         })}
       </svg>
 
-      {/* === Карточки === */}
+      {/* Сущности */}
       {entities.map((entity) => (
         <div
           key={entity.id}
@@ -339,15 +377,15 @@ const handleExportJSON = () => {
                   r.id === selectedRelationshipId &&
                   (r.from === entity.id || r.to === entity.id)
               )
-                ? "border-purple-500 ring-2 ring-purple-400 bg-indigo-50 scale-[1.02]"
+                ? "border-purple-500 ring-2 ring-purple-400 bg-indigo-50 dark:bg-indigo-900/30 scale-[1.02]"
                 : "border-indigo-400 hover:border-indigo-600 hover:scale-[1.02] hover:shadow-lg"
             }
-            bg-white text-left transition-all duration-150 ease-out`}
+            bg-white dark:bg-gray-800 text-left transition-all duration-150 ease-out`}
           style={{ left: entity.x, top: entity.y }}
           onMouseDown={(e) => handleMouseDown(e, entity.id)}
           onClick={(e) => handleEntityClick(entity.id, e)}
         >
-          {/* === Заголовок === */}
+          {/* Заголовок */}
           <div
             className="flex justify-between items-center cursor-move active:cursor-grabbing"
             onMouseDown={(e) => handleMouseDown(e, entity.id)}
@@ -360,20 +398,26 @@ const handleExportJSON = () => {
                 onMouseDown={(e) => e.stopPropagation()}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    renameEntity(entity.id, (e.target as HTMLInputElement).value.trim() || entity.name);
+                    renameEntity(
+                      entity.id,
+                      (e.target as HTMLInputElement).value.trim() || entity.name
+                    );
                     setRenamingId(null);
                   }
                   if (e.key === "Escape") setRenamingId(null);
                 }}
                 onBlur={(e) => {
-                  renameEntity(entity.id, e.target.value.trim() || entity.name);
+                  renameEntity(
+                    entity.id,
+                    e.target.value.trim() || entity.name
+                  );
                   setRenamingId(null);
                 }}
-                className="font-semibold text-indigo-700 bg-transparent border-b border-indigo-400 focus:outline-none w-32"
+                className="font-semibold text-indigo-700 dark:text-indigo-300 bg-transparent border-b border-indigo-400 focus:outline-none w-32"
               />
             ) : (
               <p
-                className="font-semibold text-indigo-700 cursor-text"
+                className="font-semibold text-indigo-700 dark:text-indigo-300 cursor-text"
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   setRenamingId(entity.id);
@@ -407,12 +451,12 @@ const handleExportJSON = () => {
             </div>
           </div>
 
-          {/* === Атрибуты === */}
-          <ul className="mt-1 text-sm text-gray-700">
+          {/* Атрибуты */}
+          <ul className="mt-1 text-sm text-gray-700 dark:text-gray-300">
             {entity.attributes.map((a) => (
               <li
                 key={a.id}
-                className="flex justify-between items-center border-t border-gray-200 pt-1 mt-1"
+                className="flex justify-between items-center border-t border-gray-200 dark:border-gray-700 pt-1 mt-1"
               >
                 <span>
                   {a.name}: {a.type}
@@ -428,10 +472,10 @@ const handleExportJSON = () => {
             ))}
           </ul>
 
-          {/* === Добавление атрибутов === */}
+          {/* Добавление атрибутов */}
           {editingId === entity.id && (
             <div
-              className="mt-2 border-t border-gray-300 pt-2"
+              className="mt-2 border-t border-gray-300 dark:border-gray-700 pt-2"
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
@@ -458,12 +502,13 @@ const handleExportJSON = () => {
         </div>
       ))}
 
-      {/* === Сетка === */}
+      {/* Сетка */}
       <div
-        className="absolute inset-0 pointer-events-none opacity-25 
-        bg-[linear-gradient(to_right,#9ca3af_1px,transparent_1px),
-            linear-gradient(to_bottom,#9ca3af_1px,transparent_1px)]
-        bg-[size:32px_32px]"
+        className="absolute inset-0 pointer-events-none opacity-20 
+        bg-[linear-gradient(to_right,var(--tw-prose-bullets)_1px,transparent_1px),
+            linear-gradient(to_bottom,var(--tw-prose-bullets)_1px,transparent_1px)]
+        bg-[size:32px_32px] dark:bg-[linear-gradient(to_right,#374151_1px,transparent_1px),
+            linear-gradient(to_bottom,#374151_1px,transparent_1px)]"
       />
     </div>
   );

@@ -42,11 +42,15 @@ interface ERState {
   // --- связи ---
   addRelationship: (from: string, to: string, type: Relationship["type"]) => void;
   removeRelationship: (id: string) => void;
-  updateRelationshipType: (id: string, newType: Relationship["type"]) => void;
+  updateRelationshipType: (id: string, type: Relationship["type"]) => void;
 
   // --- взаимодействие с линиями ---
   selectedRelationshipId: string | null;
   setSelectedRelationship: (id: string | null) => void;
+
+  // --- импорт / сброс данных ---
+  setDiagramData: (entities: Entity[], relationships: Relationship[]) => void;
+  clearAll: () => void;
 }
 
 /* ---------- Zustand Store ---------- */
@@ -128,10 +132,10 @@ export const useERStore = create<ERState>((set) => ({
       relationships: s.relationships.filter((r) => r.id !== id),
     })),
 
-  updateRelationshipType: (id, newType) =>
+  updateRelationshipType: (id, type) =>
     set((s) => ({
       relationships: s.relationships.map((r) =>
-        r.id === id ? { ...r, type: newType } : r
+        r.id === id ? { ...r, type } : r
       ),
     })),
 
@@ -139,4 +143,19 @@ export const useERStore = create<ERState>((set) => ({
   selectedRelationshipId: null,
 
   setSelectedRelationship: (id) => set({ selectedRelationshipId: id }),
+
+  /* ---------- Импорт / Сброс ---------- */
+  setDiagramData: (entities, relationships) =>
+    set(() => ({
+      entities,
+      relationships,
+      selectedRelationshipId: null,
+    })),
+
+  clearAll: () =>
+    set(() => ({
+      entities: [],
+      relationships: [],
+      selectedRelationshipId: null,
+    })),
 }));
