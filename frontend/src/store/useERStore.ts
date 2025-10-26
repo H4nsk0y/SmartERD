@@ -8,6 +8,7 @@ export interface Attribute {
   id: string;
   name: string;
   type: string;
+  isPrimaryKey?: boolean; // поддержка первичных ключей
 }
 
 export interface Entity {
@@ -36,7 +37,12 @@ interface ERState {
   renameEntity: (id: string, newName: string) => void;
 
   // --- атрибуты ---
-  addAttribute: (entityId: string, name: string, type: string) => void;
+  addAttribute: (
+    entityId: string,
+    name: string,
+    type: string,
+    isPrimaryKey?: boolean
+  ) => void;
   removeAttribute: (entityId: string, attrId: string) => void;
 
   // --- связи ---
@@ -91,15 +97,18 @@ export const useERStore = create<ERState>((set) => ({
     })),
 
   /* ---------- Атрибуты ---------- */
-  addAttribute: (entityId, name, type) =>
+  addAttribute: (entityId, name, type, isPrimaryKey = false) =>
     set((s) => ({
       entities: s.entities.map((e) =>
         e.id === entityId
           ? {
               ...e,
               attributes: [
-                ...e.attributes,
-                { id: nanoid(), name, type },
+                // если добавляем новый PK — остальные снимаем
+                ...e.attributes.map((a) =>
+                  isPrimaryKey ? { ...a, isPrimaryKey: false } : a
+                ),
+                { id: nanoid(), name, type, isPrimaryKey },
               ],
             }
           : e
@@ -141,7 +150,6 @@ export const useERStore = create<ERState>((set) => ({
 
   /* ---------- Наведение и выбор связей ---------- */
   selectedRelationshipId: null,
-
   setSelectedRelationship: (id) => set({ selectedRelationshipId: id }),
 
   /* ---------- Импорт / Сброс ---------- */

@@ -1,5 +1,6 @@
 // src/components/EditorCanvas.tsx
 import { useERStore } from "../store/useERStore";
+import { generateSQL } from "../utils/generateSQL";
 import { useEffect, useRef, useState } from "react";
 
 type Size = { w: number; h: number };
@@ -13,6 +14,7 @@ export default function EditorCanvas() {
     addAttribute,
     removeAttribute,
     addRelationship,
+    removeRelationship,
     removeEntity,
     renameEntity,
     selectedRelationshipId,
@@ -32,6 +34,8 @@ export default function EditorCanvas() {
 
   const [newAttrName, setNewAttrName] = useState("");
   const [newAttrType, setNewAttrType] = useState("");
+  const [isPrimaryKey, setIsPrimaryKey] = useState(false);
+
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
 
@@ -61,6 +65,18 @@ export default function EditorCanvas() {
     });
     return () => Object.values(observers).forEach((ro) => ro.disconnect());
   }, [entities, editingId]);
+
+  /* === Удаление связи клавишей Delete / Backspace === */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedRelationshipId) {
+        removeRelationship(selectedRelationshipId);
+        setSelectedRelationship(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedRelationshipId, removeRelationship, setSelectedRelationship]);
 
   /* === Добавление сущности === */
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -93,15 +109,6 @@ export default function EditorCanvas() {
   };
 
   const handleMouseUp = () => setDraggingId(null);
-
-  /* === Атрибуты === */
-  const handleAddAttribute = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
-    if (!editingId || !newAttrName || !newAttrType) return;
-    addAttribute(editingId, newAttrName, newAttrType);
-    setNewAttrName("");
-    setNewAttrType("");
-  };
 
   /* === Связывание === */
   const handleEntityClick = (id: string, e: React.MouseEvent) => {
@@ -142,26 +149,22 @@ export default function EditorCanvas() {
     return { x: ex, y: ey };
   }
 
-  /* === Экспорт JSON === */
+  /* === Экспорт / импорт === */
   const handleExportJSON = () => {
     const data = { entities, relationships };
     const json = JSON.stringify(data, null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
     a.href = url;
     a.download = "diagram.json";
     a.click();
-
     URL.revokeObjectURL(url);
   };
 
-  /* === Импорт JSON === */
   const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
@@ -222,13 +225,18 @@ export default function EditorCanvas() {
         </button>
         <label className="px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 cursor-pointer">
           📂 Импорт JSON
-          <input
-            type="file"
-            accept=".json"
-            onChange={handleImportJSON}
-            className="hidden"
-          />
+          <input type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
         </label>
+        <button
+          onClick={() => {
+            const sql = generateSQL(entities, relationships);
+            console.log(sql);
+            alert("SQL сгенерирован! Проверь консоль (F12)");
+          }}
+          className="px-4 py-2 rounded-lg text-white bg-yellow-500 hover:bg-yellow-600"
+        >
+          🧩 Сгенерировать SQL
+        </button>
         <button
           onClick={clearAll}
           className="px-4 py-2 rounded-lg text-white bg-red-500 hover:bg-red-600"
@@ -240,15 +248,7 @@ export default function EditorCanvas() {
       {/* SVG связи */}
       <svg className="absolute inset-0 z-10 w-full h-full">
         <defs>
-          <marker
-            id="arrow"
-            markerWidth="10"
-            markerHeight="10"
-            refX="8"
-            refY="3"
-            orient="auto"
-            markerUnits="strokeWidth"
-          >
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
             <path d="M0,0 L0,6 L9,3 z" fill="#6366f1" />
           </marker>
         </defs>
@@ -272,8 +272,12 @@ export default function EditorCanvas() {
           const midX = (p1.x + p2.x) / 2;
           const midY = (p1.y + p2.y) / 2;
 
-          const isSelected = r.id === selectedRelationshipId;
-          const strokeColor = isSelected ? "#a78bfa" : hoveredRel === r.id ? "#8b5cf6" : "#6366f1";
+          const isSelected = selectedRelationshipId === r.id;
+          const strokeColor = isSelected
+            ? "#a78bfa"
+            : hoveredRel === r.id
+            ? "#8b5cf6"
+            : "#6366f1";
 
           return (
             <g key={r.id}>
@@ -292,215 +296,239 @@ export default function EditorCanvas() {
                 onMouseLeave={() => setHoveredRel(null)}
               />
 
-              {/* === Метка типа связи с выпадающим меню === */}
-<foreignObject
-  x={midX - 18}
-  y={midY - 15}
-  width={40}
-  height={25}
-  style={{ pointerEvents: "auto", overflow: "visible" }}
->
-  <div
-    className="relative z-50 bg-white dark:bg-gray-800 text-xs border border-indigo-400 
-               rounded px-1 py-0.5 text-center cursor-pointer 
-               hover:bg-indigo-100 dark:hover:bg-indigo-700 select-none 
-               shadow-sm dark:shadow-[0_0_6px_rgba(167,139,250,0.4)]"
-    onClick={(e) => {
-      e.stopPropagation();
-      setActiveMenu(activeMenu === r.id ? null : r.id);
-    }}
-  >
-    <span className="text-indigo-700 dark:text-indigo-200 font-semibold">
-      {r.type === "one-to-one"
-        ? "1:1"
-        : r.type === "one-to-many"
-        ? "1:N"
-        : "N:M"}
-    </span>
+              {/* Тип связи */}
+              <foreignObject
+                x={midX - 18}
+                y={midY - 15}
+                width={40}
+                height={25}
+                style={{ pointerEvents: "auto", overflow: "visible" }}
+              >
+                <div
+                  className="relative z-50 bg-white dark:bg-gray-800 text-xs border border-indigo-400 
+                             rounded px-1 py-0.5 text-center cursor-pointer hover:bg-indigo-100 
+                             dark:hover:bg-indigo-700 select-none shadow-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveMenu(activeMenu === r.id ? null : r.id);
+                  }}
+                >
+                  <span className="text-indigo-700 dark:text-indigo-200 font-semibold">
+                    {r.type === "one-to-one"
+                      ? "1:1"
+                      : r.type === "one-to-many"
+                      ? "1:N"
+                      : "N:M"}
+                  </span>
 
-    {activeMenu === r.id && (
-      <div
-        className="absolute top-6 left-1/2 -translate-x-1/2 z-[9999] 
-                   bg-white dark:bg-gray-800 border border-indigo-300 dark:border-gray-600 
-                   rounded shadow-lg text-xs w-16"
-      >
-        <div
-          className="px-2 py-1 hover:bg-indigo-100 dark:hover:bg-gray-700 cursor-pointer"
-          onClick={() => {
-            updateRelationshipType(r.id, "one-to-one");
-            setActiveMenu(null);
-          }}
-        >
-          1:1
-        </div>
-        <div
-          className="px-2 py-1 hover:bg-indigo-100 dark:hover:bg-gray-700 cursor-pointer"
-          onClick={() => {
-            updateRelationshipType(r.id, "one-to-many");
-            setActiveMenu(null);
-          }}
-        >
-          1:N
-        </div>
-        <div
-          className="px-2 py-1 hover:bg-indigo-100 dark:hover:bg-gray-700 cursor-pointer"
-          onClick={() => {
-            updateRelationshipType(r.id, "many-to-many");
-            setActiveMenu(null);
-          }}
-        >
-          N:M
-        </div>
-      </div>
-    )}
-  </div>
-</foreignObject>
-
+                  {activeMenu === r.id && (
+                    <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[9999] bg-white dark:bg-gray-800 border border-indigo-300 dark:border-gray-600 rounded shadow-lg text-xs w-16">
+                      <div
+                        className="px-2 py-1 hover:bg-indigo-100 dark:hover:bg-gray-700 cursor-pointer"
+                        onClick={() => {
+                          updateRelationshipType(r.id, "one-to-one");
+                          setActiveMenu(null);
+                        }}
+                      >
+                        1:1
+                      </div>
+                      <div
+                        className="px-2 py-1 hover:bg-indigo-100 dark:hover:bg-gray-700 cursor-pointer"
+                        onClick={() => {
+                          updateRelationshipType(r.id, "one-to-many");
+                          setActiveMenu(null);
+                        }}
+                      >
+                        1:N
+                      </div>
+                      <div
+                        className="px-2 py-1 hover:bg-indigo-100 dark:hover:bg-gray-700 cursor-pointer"
+                        onClick={() => {
+                          updateRelationshipType(r.id, "many-to-many");
+                          setActiveMenu(null);
+                        }}
+                      >
+                        N:M
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </foreignObject>
             </g>
           );
         })}
       </svg>
 
-      {/* Сущности */}
-      {entities.map((entity) => (
-        <div
-          key={entity.id}
-          ref={(el) => {
-            if (el) cardRefs.current[entity.id] = el;
-            else delete cardRefs.current[entity.id];
-          }}
-          className={`absolute z-20 w-56 shadow-md rounded-lg border select-none p-2
-            ${
-              selectedForLink === entity.id ||
-              relationships.some(
-                (r) =>
-                  r.id === selectedRelationshipId &&
-                  (r.from === entity.id || r.to === entity.id)
-              )
+      {/* === Сущности === */}
+      {entities.map((entity) => {
+        const isLinkedToSelected =
+          selectedRelationshipId &&
+          relationships.some(
+            (r) =>
+              r.id === selectedRelationshipId &&
+              (r.from === entity.id || r.to === entity.id)
+          );
+
+        return (
+          <div
+            key={entity.id}
+            ref={(el) => {
+              if (el) cardRefs.current[entity.id] = el;
+              else delete cardRefs.current[entity.id];
+            }}
+            className={`absolute z-20 w-56 shadow-md rounded-lg border select-none p-2 transition-all duration-150 ease-out ${
+              isLinkedToSelected
                 ? "border-purple-500 ring-2 ring-purple-400 bg-indigo-50 dark:bg-indigo-900/30 scale-[1.02]"
                 : "border-indigo-400 hover:border-indigo-600 hover:scale-[1.02] hover:shadow-lg"
-            }
-            bg-white dark:bg-gray-800 text-left transition-all duration-150 ease-out`}
-          style={{ left: entity.x, top: entity.y }}
-          onMouseDown={(e) => handleMouseDown(e, entity.id)}
-          onClick={(e) => handleEntityClick(entity.id, e)}
-        >
-          {/* Заголовок */}
-          <div
-            className="flex justify-between items-center cursor-move active:cursor-grabbing"
+            } bg-white dark:bg-gray-800 text-left`}
+            style={{ left: entity.x, top: entity.y }}
             onMouseDown={(e) => handleMouseDown(e, entity.id)}
+            onClick={(e) => handleEntityClick(entity.id, e)}
           >
-            {renamingId === entity.id ? (
-              <input
-                autoFocus
-                defaultValue={entity.name}
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+            {/* Заголовок */}
+            <div
+              className="flex justify-between items-center cursor-move active:cursor-grabbing"
+              onMouseDown={(e) => handleMouseDown(e, entity.id)}
+            >
+              {renamingId === entity.id ? (
+                <input
+                  autoFocus
+                  defaultValue={entity.name}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      renameEntity(
+                        entity.id,
+                        (e.target as HTMLInputElement).value.trim() || entity.name
+                      );
+                      setRenamingId(null);
+                    }
+                    if (e.key === "Escape") setRenamingId(null);
+                  }}
+                  onBlur={(e) => {
                     renameEntity(
                       entity.id,
-                      (e.target as HTMLInputElement).value.trim() || entity.name
+                      e.target.value.trim() || entity.name
                     );
                     setRenamingId(null);
-                  }
-                  if (e.key === "Escape") setRenamingId(null);
-                }}
-                onBlur={(e) => {
-                  renameEntity(
-                    entity.id,
-                    e.target.value.trim() || entity.name
-                  );
-                  setRenamingId(null);
-                }}
-                className="font-semibold text-indigo-700 dark:text-indigo-300 bg-transparent border-b border-indigo-400 focus:outline-none w-32"
-              />
-            ) : (
-              <p
-                className="font-semibold text-indigo-700 dark:text-indigo-300 cursor-text"
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  setRenamingId(entity.id);
-                }}
-              >
-                {entity.name}
-              </p>
-            )}
+                  }}
+                  className="font-semibold text-indigo-700 dark:text-indigo-300 bg-transparent border-b border-indigo-400 focus:outline-none w-32"
+                />
+              ) : (
+                <p
+                  className="font-semibold text-indigo-700 dark:text-indigo-300 cursor-text"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setRenamingId(entity.id);
+                  }}
+                >
+                  {entity.name}
+                </p>
+              )}
 
-            <div className="flex items-center gap-2">
-              <button
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingId((cur) => (cur === entity.id ? null : entity.id));
-                }}
-                className="text-sm text-gray-500 hover:text-indigo-500"
-              >
-                ⚙️
-              </button>
-              <button
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeEntity(entity.id);
-                }}
-                className="text-sm text-red-500 hover:text-red-700"
-              >
-                🗑
-              </button>
-            </div>
-          </div>
-
-          {/* Атрибуты */}
-          <ul className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-            {entity.attributes.map((a) => (
-              <li
-                key={a.id}
-                className="flex justify-between items-center border-t border-gray-200 dark:border-gray-700 pt-1 mt-1"
-              >
-                <span>
-                  {a.name}: {a.type}
-                </span>
+              <div className="flex items-center gap-2">
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
-                  onClick={() => removeAttribute(entity.id, a.id)}
-                  className="text-red-500 hover:text-red-700 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingId((cur) => (cur === entity.id ? null : entity.id));
+                  }}
+                  className="text-sm text-gray-500 hover:text-indigo-500"
                 >
-                  ✖
+                  ⚙️
                 </button>
-              </li>
-            ))}
-          </ul>
-
-          {/* Добавление атрибутов */}
-          {editingId === entity.id && (
-            <div
-              className="mt-2 border-t border-gray-300 dark:border-gray-700 pt-2"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <input
-                value={newAttrName}
-                onChange={(e) => setNewAttrName(e.target.value)}
-                placeholder="Имя"
-                className="text-sm p-1 border rounded mr-1 w-24"
-              />
-              <input
-                value={newAttrType}
-                onChange={(e) => setNewAttrType(e.target.value)}
-                placeholder="Тип"
-                className="text-sm p-1 border rounded mr-1 w-20"
-              />
-              <button
-                onClick={handleAddAttribute}
-                className="text-sm bg-indigo-500 text-white px-2 py-1 rounded hover:bg-indigo-600"
-              >
-                +
-              </button>
+                <button
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeEntity(entity.id);
+                  }}
+                  className="text-sm text-red-500 hover:text-red-700"
+                >
+                  🗑
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-      ))}
+
+            {/* Атрибуты */}
+            <ul className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+              {entity.attributes.map((a) => (
+                <li
+                  key={a.id}
+                  className="flex justify-between items-center border-t border-gray-200 dark:border-gray-700 pt-1 mt-1"
+                >
+                  <span
+                    className={`${
+                      a.isPrimaryKey ? "font-bold text-indigo-600 dark:text-indigo-300" : ""
+                    }`}
+                  >
+                    {a.isPrimaryKey && "🔑 "}
+                    {a.name}: {a.type}
+                  </span>
+                  <button
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => removeAttribute(entity.id, a.id)}
+                    className="text-red-500 hover:text-red-700 text-xs"
+                  >
+                    ✖
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            {/* Добавление атрибутов */}
+            {editingId === entity.id && (
+              <div
+                className="mt-2 border-t border-gray-300 dark:border-gray-700 pt-2"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  value={newAttrName}
+                  onChange={(e) => setNewAttrName(e.target.value)}
+                  placeholder="Имя"
+                  className="text-sm p-1 border rounded mr-1 w-24"
+                />
+                <select
+                  value={newAttrType}
+                  onChange={(e) => setNewAttrType(e.target.value)}
+                  className="text-sm p-1 border rounded mr-1 w-28"
+                >
+                  <option value="">Тип</option>
+                  <option value="INT">INT</option>
+                  <option value="VARCHAR(255)">VARCHAR(255)</option>
+                  <option value="BOOLEAN">BOOLEAN</option>
+                  <option value="DATE">DATE</option>
+                  <option value="FLOAT">FLOAT</option>
+                </select>
+                <label className="text-xs text-gray-600 dark:text-gray-400 mr-2">
+                  <input
+                    type="checkbox"
+                    checked={isPrimaryKey}
+                    onChange={(e) => setIsPrimaryKey(e.target.checked)}
+                    className="mr-1"
+                  />
+                  PK
+                </label>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!newAttrName || !newAttrType) return;
+                    addAttribute(entity.id, newAttrName, newAttrType, isPrimaryKey);
+                    setNewAttrName("");
+                    setNewAttrType("");
+                    setIsPrimaryKey(false);
+                  }}
+                  className="text-sm bg-indigo-500 text-white px-2 py-1 rounded hover:bg-indigo-600"
+                >
+                  +
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {/* Сетка */}
       <div
