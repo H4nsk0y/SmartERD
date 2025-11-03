@@ -1,13 +1,16 @@
+// frontend/src/canvas/components/EntitiesLayer.tsx
 /**
- * canvas/components/EntitiesLayer
  * Отрисовка карточек сущностей + добавление/удаление атрибутов.
- * Логика редактирования имени сущности/атрибута вынесена сюда, чтобы разгрузить EditorCanvas.
- * Ввод имён атрибутов ограничен: только [A-Za-z0-9_] и без ведущей цифры (кириллица игнорится).
+ * Имя сущности/атрибута: только [A-Za-z0-9_], без ведущей цифры, max 32.
  */
 
-import React from "react";
+import React, { memo } from "react";
 import type { Size } from "../types";
-import { sanitizeIdentifierInput } from "../utils";
+import {
+  sanitizeIdentifierInput,
+  ENTITY_NAME_MAX,
+  ATTR_NAME_MAX,
+} from "../utils";
 
 type Attribute = { id: string; name: string; type: string; isPrimaryKey?: boolean };
 type EntityVM = { id: string; name: string; x: number; y: number; attributes: Attribute[] };
@@ -29,7 +32,7 @@ export type EntitiesLayerProps = {
   renamingId: string | null;
   setRenamingId: React.Dispatch<React.SetStateAction<string | null>>;
 
-  /** Подсветка: функция говорит, связана ли сущность с выделенной/ховерной связью */
+  /** Подсветка: связана ли сущность с выделенной/ховерной связью */
   isLinked: (entityId: string) => boolean;
 
   /** Обработчики из стора/родителя */
@@ -40,7 +43,7 @@ export type EntitiesLayerProps = {
   addAttribute: (entityId: string, name: string, type: string, isPk: boolean) => void;
   removeAttribute: (entityId: string, attrId: string) => void;
 
-  /** Локальный стейт ввода нового атрибута (держим в родителе, чтобы не терялся при перерендере) */
+  /** Локальный стейт ввода нового атрибута (живёт в родителе, чтобы не терялся) */
   newAttrName: string;
   setNewAttrName: React.Dispatch<React.SetStateAction<string>>;
   newAttrType: string;
@@ -48,17 +51,6 @@ export type EntitiesLayerProps = {
   isPrimaryKey: boolean;
   setIsPrimaryKey: React.Dispatch<React.SetStateAction<boolean>>;
 };
-
-/** Фильтр ввода идентификатора: удаляем всё, что не [A-Za-z0-9_], не подставляем '_' вместо кириллицы.
- *  Также не даём начинать с цифры.
- */
-function filterIdentifier(raw: string): string {
-  // оставляем только латиницу/цифры/нижнее подчёркивание
-  let s = raw.replace(/[^A-Za-z0-9_]/g, "");
-  // без ведущей цифры
-  if (/^[0-9]/.test(s)) s = "_" + s;
-  return s;
-}
 
 const typeOptions = [
   "",
@@ -74,7 +66,7 @@ const typeOptions = [
   "DECIMAL(10,2)",
 ];
 
-export default function EntitiesLayer(props: EntitiesLayerProps) {
+function EntitiesLayerImpl(props: EntitiesLayerProps) {
   const {
     entities,
     cardRefs,
@@ -97,6 +89,16 @@ export default function EntitiesLayer(props: EntitiesLayerProps) {
     setIsPrimaryKey,
   } = props;
 
+  /** Локальный черновик имени при переименовании (контролируемый input) */
+  const [renameDraft, setRenameDraft] = React.useState<string>("");
+
+  // Когда начинаем/переключаем переименование — подхватываем текущее имя
+  React.useEffect(() => {
+    if (!renamingId) return;
+    const ent = entities.find((e) => e.id === renamingId);
+    setRenameDraft(ent ? ent.name : "");
+  }, [renamingId, entities]);
+
   return (
     <>
       {entities.map((entity) => {
@@ -106,10 +108,11 @@ export default function EntitiesLayer(props: EntitiesLayerProps) {
           <div
             key={entity.id}
             ref={(el) => {
-              if (el) props.cardRefs.current[entity.id] = el;
-              else delete props.cardRefs.current[entity.id];
+              if (el) cardRefs.current[entity.id] = el;
+              else delete cardRefs.current[entity.id];
             }}
-            className={`absolute z-20 w-56 shadow-md rounded-lg border select-none p-2 transition-all duration-150 ease-out ${
+            data-entity-id={entity.id}
+            className={`absolute z-20 w-56 shadow-md rounded-2xl border select-none p-2 transition-all duration-150 ease-out ${
               linkedByHoverOrSel
                 ? "border-purple-500 ring-2 ring-purple-400 bg-indigo-50 dark:bg-indigo-900/30 scale-[1.02]"
                 : "border-indigo-400 hover:border-indigo-600 hover:scale-[1.02] hover:shadow-lg"
@@ -126,28 +129,35 @@ export default function EntitiesLayer(props: EntitiesLayerProps) {
               {renamingId === entity.id ? (
                 <input
                   autoFocus
-                  defaultValue={entity.name}
+                  value={renameDraft}
+                  onChange={(e) =>
+                    setRenameDraft(
+                      sanitizeIdentifierInput(e.target.value).slice(0, ENTITY_NAME_MAX)
+                    )
+                  }
                   onClick={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
-                      renameEntity(
-                        entity.id,
-                        (e.target as HTMLInputElement).value.trim() || entity.name
-                      );
+                      const next = sanitizeIdentifierInput(renameDraft).slice(0, ENTITY_NAME_MAX).trim();
+                      if (next) renameEntity(entity.id, next);
                       setRenamingId(null);
                     }
                     if (e.key === "Escape") setRenamingId(null);
                   }}
-                  onBlur={(e) => {
-                    renameEntity(entity.id, e.target.value.trim() || entity.name);
+                  onBlur={() => {
+                    const next = sanitizeIdentifierInput(renameDraft).slice(0, ENTITY_NAME_MAX).trim();
+                    if (next) renameEntity(entity.id, next);
                     setRenamingId(null);
                   }}
-                  className="font-semibold text-indigo-700 dark:text-indigo-300 bg-transparent border-b border-indigo-400 focus:outline-none w-32"
+                  className="font-semibold text-indigo-700 dark:text-indigo-300 bg-transparent border-b border-indigo-400 focus:outline-none w-40"
+                  maxLength={ENTITY_NAME_MAX}
+                  placeholder="Entity_Name"
                 />
               ) : (
                 <p
-                  className="font-semibold text-indigo-700 dark:text-indigo-300 cursor-text"
+                  className="font-semibold text-indigo-700 dark:text-indigo-300 cursor-text whitespace-nowrap overflow-hidden text-ellipsis max-w-[160px]"
+                  title={entity.name}
                   onDoubleClick={(e) => {
                     e.stopPropagation();
                     setRenamingId(entity.id);
@@ -188,16 +198,12 @@ export default function EntitiesLayer(props: EntitiesLayerProps) {
               {entity.attributes.map((a) => (
                 <li
                   key={a.id}
-                  className="flex justify-between items-center border-t border-gray-200 dark:border-gray-700 pt-1 mt-1"
+                  className="flex justify-between items-center border-top border-gray-200 dark:border-gray-700 pt-1 mt-1"
                 >
                   <span
-                    className={`${
-                      (a as any).isPrimaryKey
-                        ? "font-bold text-indigo-600 dark:text-indigo-300"
-                        : ""
-                    }`}
+                    className={`${a.isPrimaryKey ? "font-bold text-indigo-600 dark:text-indigo-300" : ""}`}
                   >
-                    {(a as any).isPrimaryKey && "🔑 "}
+                    {a.isPrimaryKey && "🔑 "}
                     {a.name}: {a.type}
                   </span>
                   <button
@@ -213,7 +219,7 @@ export default function EntitiesLayer(props: EntitiesLayerProps) {
             </ul>
 
             {/* Редактор: добавить атрибут */}
-            {editingId === entity.id && (
+            {props.editingId === entity.id && (
               <div
                 className="mt-2 border-t border-gray-300 dark:border-gray-700 pt-2"
                 onMouseDown={(e) => e.stopPropagation()}
@@ -222,12 +228,11 @@ export default function EntitiesLayer(props: EntitiesLayerProps) {
                 <input
                   value={newAttrName}
                   onChange={(e) => {
-                    // не подставляем '_' за кириллицу — просто игнорим запрещённые символы
-                    const filtered = filterIdentifier(e.target.value);
+                    const filtered = sanitizeIdentifierInput(e.target.value).slice(0, ATTR_NAME_MAX);
                     setNewAttrName(filtered);
                   }}
-                  // без некрасивых подсказок — просто пустой placeholder
                   placeholder="имя"
+                  maxLength={ATTR_NAME_MAX}
                   className="text-sm p-1 border rounded mr-1 w-28 dark:bg-gray-900 dark:text-gray-100"
                 />
                 <select
@@ -245,7 +250,7 @@ export default function EntitiesLayer(props: EntitiesLayerProps) {
                   <input
                     type="checkbox"
                     checked={isPrimaryKey}
-                    onChange={(e) => setIsPrimaryKey(e.target.checked)}
+                    onChange={(e) => props.setIsPrimaryKey(e.target.checked)}
                     className="mr-1"
                   />
                   PK
@@ -255,10 +260,10 @@ export default function EntitiesLayer(props: EntitiesLayerProps) {
                     e.stopPropagation();
                     if (!newAttrName || !newAttrType) return;
                     addAttribute(entity.id, newAttrName, newAttrType, isPrimaryKey);
-                    // сброс локального ввода
-                    setNewAttrName("");
-                    setNewAttrType("");
-                    setIsPrimaryKey(false);
+                    // reset локального ввода
+                    props.setNewAttrName("");
+                    props.setNewAttrType("");
+                    props.setIsPrimaryKey(false);
                   }}
                   className="text-sm bg-indigo-500 text-white px-2 py-1 rounded hover:bg-indigo-600"
                 >
@@ -273,5 +278,6 @@ export default function EntitiesLayer(props: EntitiesLayerProps) {
   );
 }
 
-
-export { sanitizeIdentifierInput };
+/** memo: снижает количество перерендеров слоя при обновлении стора/камеры */
+const EntitiesLayer = memo(EntitiesLayerImpl);
+export default EntitiesLayer;

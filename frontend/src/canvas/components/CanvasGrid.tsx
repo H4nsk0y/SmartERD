@@ -1,8 +1,10 @@
+// frontend/src/canvas/components/CanvasGrid.tsx
 /**
  * canvas/components/CanvasGrid.tsx
  * Простой фон-грид. Пропсы: world {w,h}, gridSize (px).
  */
-import React from "react";
+
+
 
 export type CanvasGridProps = {
   world: { w: number; h: number };

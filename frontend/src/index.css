@@ -2,9 +2,124 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Добавляем градиент для всей страницы */
+/* Градиент для всей страницы */
 @layer base {
   body {
     @apply bg-gradient-to-br from-blue-100 via-indigo-100 to-indigo-200 min-h-screen;
   }
+  /* ВАЖНО: тёмный вариант — когда на <html> есть класс .dark */
+  html.dark body {
+    @apply bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900;
+  }
 }
+
+/* Высотная цепочка */
+html, body, #root {
+  height: 100%;
+  min-height: 100%;
+}
+
+
+/* ЕДИНЫЙ СТИЛЬ КНОПОК ТУЛБАРА + «угловой» hover-эффект */
+
+/* === SLICED BUTTON (копия эффекта из примера, цвет — индиго/голубой) === */
+
+:root {
+  /* базовый цвет «уголков» и границ */
+  --btn-accent: #60a5fa; /* sky-400 */
+  --btn-accent-strong: #6366f1; /* indigo-500/600 микс */
+  --btn-text: #1f2937; /* gray-800 */
+  --btn-text-dark: #f9fafb;
+}
+
+/* сам «якорь»: размеры одинковые для всех */
+.tool-btn-sliced {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 180px;
+  height: 50px;
+  padding: 0 12px;
+
+  text-transform: none;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+
+  color: var(--btn-text);
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 12px;
+
+  /* как в примере: плавные переходы */
+  transition: all 1000ms cubic-bezier(0.890, -0.170, 0.140, 1.225);
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden; /* важное: чтобы углы не выступали */
+}
+.dark .tool-btn-sliced {
+  color: var(--btn-text-dark);
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+/* «уголки» — точь-в-точь схема из твоего примера: a::before/::after и span::before/::after */
+.tool-btn-sliced::before,
+.tool-btn-sliced::after,
+.tool-btn-sliced .corner-anchor::before,
+.tool-btn-sliced .corner-anchor::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+
+  background: var(--btn-accent);
+  transition: 1s;
+  mix-blend-mode: screen; /* как в примере */
+  border-radius: 2px;
+}
+
+/* top-left / top-right */
+.tool-btn-sliced::before { top: -2px; left: -2px; }
+.tool-btn-sliced::after  { top: -2px; right: -2px; }
+/* bottom-left / bottom-right */
+.tool-btn-sliced .corner-anchor::before { bottom: -2px; left: -2px; }
+.tool-btn-sliced .corner-anchor::after  { bottom: -2px; right: -2px; }
+
+/* hover-анимация — расширяем до половины стороны РОВНО как в примере */
+.tool-btn-sliced:hover::before,
+.tool-btn-sliced:hover::after,
+.tool-btn-sliced:hover .corner-anchor::before,
+.tool-btn-sliced:hover .corner-anchor::after {
+  width: calc(180px / 2);
+  height: calc(50px / 2);
+}
+
+/* лёгкий фидбек при hover/focus */
+.tool-btn-sliced:hover {
+  background: rgba(99,102,241,0.14);
+  border-color: var(--btn-accent-strong);
+}
+.tool-btn-sliced:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 0 0 5px rgba(99,102,241,.6);
+}
+.tool-btn-sliced:active {
+  transform: translateY(1px);
+}
+
+/* disabled на будущее */
+.tool-btn-sliced[disabled] {
+  opacity: .55;
+  cursor: not-allowed;
+  filter: grayscale(.25);
+}
+
+/* вспомогательный спан: в примере он пустой, важен только как якорь для нижних углов */
+.tool-btn-sliced .corner-anchor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+

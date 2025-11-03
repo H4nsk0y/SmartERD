@@ -1,6 +1,10 @@
-// src/store/useERStore.ts
+// frontend/src/store/useERStore.ts
 import { create } from "zustand";
 import { nanoid } from "nanoid";
+import {
+  normalizeEntityName,
+  normalizeAttributeName,
+} from "../canvas/utils";
 
 /* ---------- Типы ---------- */
 
@@ -21,36 +25,23 @@ export interface Entity {
 
 /** Явные настройки FK для 1:1 / 1:N */
 export interface FKMeta {
-  /** Имя столбца FK в целевой таблице (to). По умолчанию: <from_singular>_<pk> */
   column?: string;
-  /** SQL-тип столбца FK. По умолчанию: тип PK исходной таблицы */
   type?: string;
-  /** NOT NULL (по умолчанию true) */
   notNull?: boolean;
-  /** UNIQUE (по умолчанию для one-to-one будет true, но можно переопределить) */
   unique?: boolean;
-  /** ON DELETE действие: CASCADE | SET NULL | RESTRICT | NO ACTION (по умолчанию CASCADE) */
   onDelete?: "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
-  /** ON UPDATE действие (по умолчанию NO ACTION — в SQL обычно опускается) */
   onUpdate?: "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
-  /** Создавать ли индекс на FK (по умолчанию true) */
   index?: boolean;
 }
 
 /** Явные настройки линк-таблицы для N:M */
 export interface LinkMeta {
-  /** Имя таблицы связи (если не указано — будет сгенерировано: <from>_<to>_link) */
   tableName?: string;
-  /** Имя левого столбца (ссылается на from) */
-  leftColumn?: string;   // напр. user_id
-  /** Имя правого столбца (ссылается на to) */
-  rightColumn?: string;  // напр. product_id
-  /** Явно ставить составной PK (по умолчанию true) */
+  leftColumn?: string;
+  rightColumn?: string;
   compositePrimaryKey?: boolean;
-  /** ON DELETE / ON UPDATE для обоих FK (по умолчанию CASCADE / NO ACTION) */
   onDelete?: "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
   onUpdate?: "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
-  /** Создавать индексы по обоим FK (по умолчанию true) */
   index?: boolean;
 }
 
@@ -59,9 +50,7 @@ export interface Relationship {
   from: string;
   to: string;
   type: "one-to-one" | "one-to-many" | "many-to-many";
-  /** Опциональные настройки для 1:1 / 1:N */
   fk?: FKMeta;
-  /** Опциональные настройки для N:M */
   link?: LinkMeta;
 }
 
@@ -96,11 +85,8 @@ interface ERState {
   removeRelationship: (id: string) => void;
   updateRelationshipType: (id: string, type: Relationship["type"]) => void;
 
-  /** Полное обновление метаданных связи (универсальный метод) */
   updateRelationshipMeta: (id: string, patch: Partial<Pick<Relationship, "fk" | "link">>) => void;
-  /** Установить/обновить FK-метаданные */
   setRelationshipFK: (id: string, fk: Partial<FKMeta>) => void;
-  /** Установить/обновить Link-метаданные (для N:M) */
   setRelationshipLink: (id: string, link: Partial<LinkMeta>) => void;
 
   // --- взаимодействие с линиями ---
@@ -143,9 +129,13 @@ export const useERStore = create<ERState>((set, get) => {
     /* ---------- Сущности ---------- */
     addEntity: (name, x, y) => {
       pushHistory();
-      set((s) => ({
-        entities: [...s.entities, { id: nanoid(), name, x, y, attributes: [] }],
-      }));
+      set((s) => {
+        const used = new Set(s.entities.map((e) => e.name.toLowerCase()));
+        const final = normalizeEntityName(name, used);
+        return {
+          entities: [...s.entities, { id: nanoid(), name: final, x, y, attributes: [] }],
+        };
+      });
     },
 
     updateEntityPosition: (id, x, y) => {
@@ -165,27 +155,40 @@ export const useERStore = create<ERState>((set, get) => {
 
     renameEntity: (id, newName) => {
       pushHistory();
-      set((s) => ({
-        entities: s.entities.map((e) => (e.id === id ? { ...e, name: newName } : e)),
-      }));
+      set((s) => {
+        const used = new Set(
+          s.entities
+            .filter((e) => e.id !== id)
+            .map((e) => e.name.toLowerCase())
+        );
+        const final = normalizeEntityName(newName, used);
+        return {
+          entities: s.entities.map((e) => (e.id === id ? { ...e, name: final } : e)),
+        };
+      });
     },
 
     /* ---------- Атрибуты ---------- */
     addAttribute: (entityId, name, type, isPrimaryKey = false) => {
       pushHistory();
-      set((s) => ({
-        entities: s.entities.map((e) =>
-          e.id === entityId
-            ? {
-                ...e,
-                attributes: [
-                  ...e.attributes.map((a) => (isPrimaryKey ? { ...a, isPrimaryKey: false } : a)),
-                  { id: nanoid(), name, type, isPrimaryKey },
-                ],
-              }
-            : e
-        ),
-      }));
+      set((s) => {
+        return {
+          entities: s.entities.map((e) => {
+            if (e.id !== entityId) return e;
+            const usedAttr = new Set(e.attributes.map((a) => a.name.toLowerCase()));
+            const finalName = normalizeAttributeName(name, usedAttr);
+            return {
+              ...e,
+              attributes: [
+                ...e.attributes.map((a) =>
+                  isPrimaryKey ? { ...a, isPrimaryKey: false } : a
+                ),
+                { id: nanoid(), name: finalName, type, isPrimaryKey },
+              ],
+            };
+          }),
+        };
+      });
     },
 
     removeAttribute: (entityId, attrId) => {
@@ -222,9 +225,7 @@ export const useERStore = create<ERState>((set, get) => {
     updateRelationshipMeta: (id, patch) => {
       pushHistory();
       set((s) => ({
-        relationships: s.relationships.map((r) =>
-          r.id === id ? { ...r, ...patch } : r
-        ),
+        relationships: s.relationships.map((r) => (r.id === id ? { ...r, ...patch } : r)),
       }));
     },
 
@@ -253,9 +254,23 @@ export const useERStore = create<ERState>((set, get) => {
     /* ---------- Импорт / Сброс ---------- */
     setDiagramData: (entities, relationships) => {
       pushHistory();
+      // Нормализуем и уникализируем имена при импорте
+      const result: Entity[] = [];
+      for (const e of entities || []) {
+        const usedEnt = new Set(result.map((x) => x.name.toLowerCase()));
+        const finalEntName = normalizeEntityName(e.name ?? "", usedEnt);
+        const usedAttr = new Set<string>();
+        const attrs =
+          (e.attributes ?? []).map((a) => {
+            const finalAttr = normalizeAttributeName(a.name ?? "", usedAttr);
+            usedAttr.add(finalAttr.toLowerCase());
+            return { ...a, name: finalAttr };
+          });
+        result.push({ ...clone(e), name: finalEntName, attributes: attrs });
+      }
       set(() => ({
-        entities: clone(entities),
-        relationships: clone(relationships),
+        entities: result,
+        relationships: clone(relationships || []),
         selectedRelationshipId: null,
       }));
     },

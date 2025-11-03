@@ -1,14 +1,12 @@
+// frontend/src/canvas/geom/index.ts
 /**
  * canvas/geom
  * Геометрия для линий связей, пересечения с рамками карточек и т.п.
  */
-
 export type Point = { x: number; y: number };
 
-/**
- * Находит точку выхода луча из центра прямоугольника к targetCenter.
- * halfW/halfH — полуразмеры прямоугольника; pad — небольшой отступ от края.
- */
+/** Точка выхода луча из центра прямоугольника к targetCenter.
+ * halfW/halfH — полуразмеры прямоугольника; pad — отступ от края. */
 export function edgePointRayIntersect(
   rectCenter: Point,
   targetCenter: Point,
