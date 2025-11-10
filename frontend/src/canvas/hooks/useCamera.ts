@@ -1,7 +1,7 @@
+// frontend/src/canvas/hooks/useCamera.ts
 /**
- * canvas/hooks/useCamera
- * Хук камеры: зум, панорамирование, перевод экранных координат в мировые, viewport-прямоугольник.
- * Не вешает обработчики сам — возвращает функции, которые ты прокинешь на контейнер канваса.
+ * Хук камеры: зум, пан, конвертация координат, viewport.
+ * Вешать колесо лучше нативно с { passive: false } → onWheelNative.
  */
 
 import * as React from "react";
@@ -11,10 +11,8 @@ import { clamp } from "../utils";
 type Point = { x: number; y: number };
 
 export type UseCameraOptions = {
-  /** Пределы масштаба */
   minScale?: number;
   maxScale?: number;
-  /** Изначальный масштаб/смещение */
   initialScale?: number;
   initialOffset?: Point;
 };
@@ -35,7 +33,6 @@ export function useCamera(opts: UseCameraOptions = {}) {
   React.useEffect(() => { scaleRef.current = scale; }, [scale]);
   React.useEffect(() => { offsetRef.current = offset; }, [offset]);
 
-  // панорамирование
   const isPanning = React.useRef(false);
   const panStartScreen = React.useRef<Point>({ x: 0, y: 0 });
 
@@ -71,10 +68,9 @@ export function useCamera(opts: UseCameraOptions = {}) {
     isPanning.current = false;
   }, []);
 
-  // колесо (зум к курсору)
+  /** React-версия: не вызывает preventDefault, чтобы не падать на passive listeners */
   const onWheel = React.useCallback((e: React.WheelEvent, host: HTMLElement | null) => {
     if (!host) return;
-    e.preventDefault();
     const rect = host.getBoundingClientRect();
     const pre = toWorld(e.clientX, e.clientY, rect);
     const sPrev = scaleRef.current;
@@ -88,7 +84,23 @@ export function useCamera(opts: UseCameraOptions = {}) {
     setScale(sNext); setOffset(offNext);
   }, [minScale, maxScale, toWorld]);
 
-  // вьюпорт в мировых координатах
+  /** Нативная версия под addEventListener('wheel', ..., {passive:false}) */
+  const onWheelNative = React.useCallback((e: WheelEvent, host: HTMLElement | null) => {
+    if (!host) return;
+    e.preventDefault(); // безопасно: слушатель будет с passive:false
+    const rect = host.getBoundingClientRect();
+    const pre = toWorld(e.clientX, e.clientY, rect);
+    const sPrev = scaleRef.current;
+    const factor = Math.exp(-e.deltaY * 0.0015);
+    const sNext = clamp(sPrev * factor, minScale, maxScale);
+    const offNext = {
+      x: e.clientX - rect.left - pre.x * sNext,
+      y: e.clientY - rect.top  - pre.y * sNext,
+    };
+    scaleRef.current = sNext; offsetRef.current = offNext;
+    setScale(sNext); setOffset(offNext);
+  }, [minScale, maxScale, toWorld]);
+
   const getViewportWorldRect = React.useCallback((host: HTMLElement | null): { x: number; y: number; w: number; h: number } => {
     if (!host) return { x: 0, y: 0, w: 0, h: 0 };
     const r = host.getBoundingClientRect();
@@ -100,12 +112,7 @@ export function useCamera(opts: UseCameraOptions = {}) {
     };
   }, []);
 
-  // fit-all и 1:1
-  const fitAll = React.useCallback((
-    host: HTMLElement | null,
-    boxes: Array<{ x: number; y: number; w: number; h: number }>,
-    pad = 64
-  ) => {
+  const fitAll = React.useCallback((host: HTMLElement | null, boxes: Array<{ x: number; y: number; w: number; h: number }>, pad = 64) => {
     if (!host || boxes.length === 0) {
       scaleRef.current = 1; offsetRef.current = { x: 0, y: 0 };
       setScale(1); setOffset({ x: 0, y: 0 });
@@ -137,15 +144,20 @@ export function useCamera(opts: UseCameraOptions = {}) {
     setScale(1); setOffset({ x: 0, y: 0 });
   }, []);
 
+  const centerOn = React.useCallback((host: HTMLElement | null, worldX: number, worldY: number) => {
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
+    const s = scaleRef.current;
+    const off = { x: -worldX * s + rect.width / 2, y: -worldY * s + rect.height / 2 };
+    offsetRef.current = off; setOffset(off);
+  }, []);
+
   return {
-    // state
     scale, offset,
-    // refs (на случай, если нужны синхронные значения)
     scaleRef, offsetRef,
-    // helpers
-    toWorld, getViewportWorldRect, fitAll, reset1x,
-    // handlers (вешаются на контейнер)
-    onPanStart, onPanMove, onPanEnd, onWheel,
+    toWorld, getViewportWorldRect, fitAll, reset1x, centerOn,
+    onPanStart, onPanMove, onPanEnd,
+    onWheel, onWheelNative, // <- новое
     setScale, setOffset,
   };
 }

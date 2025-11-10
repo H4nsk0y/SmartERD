@@ -23,6 +23,24 @@ const resources = {
       },
       settings: {
         title: "Настройки",
+        sections: {
+          appearance: "Внешний вид",
+          editor: "Редактор",
+        },
+        appearance: {
+          theme: "Тема",
+          language: "Язык интерфейса",
+          light: "Светлая",
+          dark: "Тёмная",
+          compactToolbar: "Компактные кнопки тулбара (иконки)",
+        },
+        editor: {
+          sqlPanelDefault: "SQL-панель по умолчанию",
+          minimapDefault: "Мини-карта по умолчанию",
+          confirmDelete: "Подтверждать удаление",
+        },
+        reset: "Сбросить настройки",
+        hint: "Настройки сохраняются локально и применяются ко всем страницам.",
       },
       ai: {
         title: "AI-Помощник",
@@ -50,6 +68,24 @@ const resources = {
       },
       settings: {
         title: "Settings",
+        sections: {
+          appearance: "Appearance",
+          editor: "Editor",
+        },
+        appearance: {
+          theme: "Theme",
+          language: "Interface language",
+          light: "Light",
+          dark: "Dark",
+          compactToolbar: "Compact toolbar (icons)",
+        },
+        editor: {
+          sqlPanelDefault: "SQL panel by default",
+          minimapDefault: "Minimap by default",
+          confirmDelete: "Confirm delete",
+        },
+        reset: "Reset settings",
+        hint: "Settings are stored locally and applied across pages.",
       },
       ai: {
         title: "AI Assistant",
@@ -62,9 +98,7 @@ i18n.use(initReactI18next).init({
   resources,
   lng: "ru",
   fallbackLng: "ru",
-  interpolation: {
-    escapeValue: false,
-  },
+  interpolation: { escapeValue: false },
 });
 
 export default i18n;

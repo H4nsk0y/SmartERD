@@ -1,21 +1,6 @@
 /**
  * canvas/components/RelationInspector
  * Панель настроек связи (FK / Link). Без стора — только UI + коллбеки.
- *
- * Пропсы:
- * - relation: { id, from, to, type, fk?, link? }
- * - entities: [{ id, name, attributes? }]
- * - onClose(): закрыть панель
- * - onSaveFK(patch): сохранить FK-метаданные (partial)
- * - onSaveLink(patch): сохранить Link-метаданные (partial)
- * - onReset(): сбросить метаданные связи (fk/link -> undefined)
- * - fkForm, setFkForm: локальная форма для FK
- * - linkForm, setLinkForm: локальная форма для Link
- *
- * Заметки:
- * - типы и утилиты — из canvas/types и canvas/utils
- * - динамические подсказки по имени FK (показываем, если в целевой таблице уже есть похожее имя)
- * - список типов для select, плюс ручной ввод
  */
 
 import * as React from "react";
@@ -62,7 +47,14 @@ export default function RelationInspector({
   const from = React.useMemo(() => entities.find((e) => e.id === relation.from), [entities, relation.from]);
   const to = React.useMemo(() => entities.find((e) => e.id === relation.to), [entities, relation.to]);
 
-  // динамические подсказки и дефолты
+  const [flash, setFlash] = React.useState<null | "saved" | "reset">(null);
+  React.useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 1200);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  // динамические подсказки/дефолты
   const fromSingular = snake(toSingular(from?.name || "from"));
   const toSingularNm = snake(toSingular(to?.name || "to"));
   const fromPK = (from?.attributes || []).find((a: any) => a.isPrimaryKey) || { name: "id", type: "INT" as string };
@@ -84,12 +76,16 @@ export default function RelationInspector({
   return (
     <div
       ref={refEl as any}
-      data-inspector="true"
       className="absolute right-4 top-4 z-50 w-[360px] max-h-[80vh] overflow-auto rounded-xl border shadow-xl bg-white/95 dark:bg-gray-900/95 backdrop-blur p-3"
       style={{ borderColor: "rgba(99,102,241,0.35)" }}
       onKeyDown={(e) => {
-        // блокируем удаление связи Backspace/Delete внутри формы
+        // чтобы Delete/Backspace внутри форм не удаляли связи
         if (e.key === "Backspace" || e.key === "Delete") e.stopPropagation();
+        // Esc — закрыть панель
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onClose();
+        }
       }}
     >
       <div className="flex items-center justify-between mb-2">
@@ -97,10 +93,24 @@ export default function RelationInspector({
         <button
           className="text-sm px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600"
           onClick={onClose}
+          title="Закрыть"
         >
           ✖
         </button>
       </div>
+
+      {/* Flash */}
+      {flash && (
+        <div
+          className={`mb-2 inline-block text-xs px-2 py-1 rounded transition-opacity ${
+            flash === "saved"
+              ? "bg-green-100 text-green-900 dark:bg-green-900/40 dark:text-green-200"
+              : "bg-yellow-100 text-yellow-900 dark:bg-yellow-900/40 dark:text-yellow-200"
+          }`}
+        >
+          {flash === "saved" ? "Сохранено" : "Сброшено"}
+        </div>
+      )}
 
       <div className="text-xs text-gray-700 dark:text-gray-300 mb-2">
         {from?.name} <span className="text-indigo-500">→</span> {to?.name} &nbsp;
@@ -130,10 +140,7 @@ export default function RelationInspector({
               <select
                 className="w-1/2 px-2 py-1 rounded border bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 value={typeOptions.includes(fkForm.type) ? fkForm.type : ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setFkForm((s) => ({ ...s, type: v }));
-                }}
+                onChange={(e) => setFkForm((s) => ({ ...s, type: e.target.value }))}
               >
                 {typeOptions.map((opt) => (
                   <option key={opt || "_"} value={opt}>
@@ -169,12 +176,21 @@ export default function RelationInspector({
           <Check label="Создать индекс" checked={fkForm.index !== false} onChange={(v) => setFkForm((s) => ({ ...s, index: v }))} />
 
           <div className="flex gap-2 pt-2">
-            <button className="flex-1 px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700" onClick={() => onSaveFK(fkForm)}>
+            <button
+              className="flex-1 px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 transition-colors"
+              onClick={() => {
+                onSaveFK(fkForm);
+                setFlash("saved");
+              }}
+            >
               ✅ Сохранить
             </button>
             <button
-              className="px-3 py-1.5 rounded bg-gray-200 dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600"
-              onClick={() => onReset()}
+              className="px-3 py-1.5 rounded bg-gray-200 dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              onClick={() => {
+                onReset();
+                setFlash("reset");
+              }}
             >
               ↺ Сбросить
             </button>
@@ -210,11 +226,7 @@ export default function RelationInspector({
             </Field>
           </div>
 
-          <Check
-            label="Составной PRIMARY KEY"
-            checked={linkForm.compositePrimaryKey !== false}
-            onChange={(v) => setLinkForm((s) => ({ ...s, compositePrimaryKey: v }))}
-          />
+          <Check label="Составной PRIMARY KEY" checked={linkForm.compositePrimaryKey !== false} onChange={(v) => setLinkForm((s) => ({ ...s, compositePrimaryKey: v }))} />
 
           <Field label="ON DELETE">
             <SelectAction value={linkForm.onDelete ?? "CASCADE"} onChange={(v) => setLinkForm((s) => ({ ...s, onDelete: v as Action }))} />
@@ -230,12 +242,21 @@ export default function RelationInspector({
           <Check label="Создать индексы по FK" checked={linkForm.index !== false} onChange={(v) => setLinkForm((s) => ({ ...s, index: v }))} />
 
           <div className="flex gap-2 pt-2">
-            <button className="flex-1 px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700" onClick={() => onSaveLink(linkForm)}>
+            <button
+              className="flex-1 px-3 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 transition-colors"
+              onClick={() => {
+                onSaveLink(linkForm);
+                setFlash("saved");
+              }}
+            >
               ✅ Сохранить
             </button>
             <button
-              className="px-3 py-1.5 rounded bg-gray-200 dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600"
-              onClick={() => onReset()}
+              className="px-3 py-1.5 rounded bg-gray-200 dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              onClick={() => {
+                onReset();
+                setFlash("reset");
+              }}
             >
               ↺ Сбросить
             </button>

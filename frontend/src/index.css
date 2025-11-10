@@ -2,9 +2,120 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Добавляем градиент для всей страницы */
+/* Градиент для всей страницы */
 @layer base {
   body {
     @apply bg-gradient-to-br from-blue-100 via-indigo-100 to-indigo-200 min-h-screen;
   }
+  html.dark body {
+    @apply bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900;
+  }
+}
+
+/* Высотная цепочка */
+html, body, #root {
+  height: 100%;
+  min-height: 100%;
+}
+
+/* === Компактные икон-кнопки для тулбара (новый стиль) === */
+/* .tool-btn-sliced остаётся алиасом, чтобы разметку не менять. */
+
+.tool-btn-icon,
+.tool-btn-sliced {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 44px;
+  height: 44px;
+  padding: 0;
+
+  /* НОВОЕ: немного больше отступов между кнопками */
+  margin: 0 8px 8px 0;
+
+  font-size: 20px;   /* размер эмодзи */
+  line-height: 1;
+  color: #1f2937;    /* gray-800 */
+  cursor: pointer;
+
+  border-radius: 12px;
+  background: rgba(99, 102, 241, 0.10);      /* indigo-500, прозрачно */
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+
+  transition:
+    background-color .12s ease,
+    border-color .12s ease,
+    box-shadow .12s ease;
+}
+
+/* Тёмная тема */
+.dark .tool-btn-icon,
+.dark .tool-btn-sliced {
+  color: #f9fafb;
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.45);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.40);
+}
+
+/* НОВОЕ: лёгкий hover — глубже тень и чуть ярче фон/граница */
+@media (hover: hover) {
+  .tool-btn-icon:hover,
+  .tool-btn-sliced:hover {
+    background: rgba(99, 102, 241, 0.16);
+    border-color: rgba(99, 102, 241, 0.55);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+  }
+
+  .dark .tool-btn-icon:hover,
+  .dark .tool-btn-sliced:hover {
+    background: rgba(99, 102, 241, 0.22);
+    border-color: rgba(99, 102, 241, 0.60);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  }
+}
+
+/* Аккуратный focus-visible для клавиатуры */
+.tool-btn-icon:focus-visible,
+.tool-btn-sliced:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(99,102,241,0.35),
+    0 4px 10px rgba(0,0,0,0.12);
+}
+
+/* Активное состояние — чуть меньше тень */
+.tool-btn-icon:active,
+.tool-btn-sliced:active {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+}
+
+
+.tool-btn-icon::before,
+.tool-btn-icon::after,
+.tool-btn-icon .corner-anchor::before,
+.tool-btn-icon .corner-anchor::after,
+.tool-btn-sliced::before,
+.tool-btn-sliced::after,
+.tool-btn-sliced .corner-anchor::before,
+.tool-btn-sliced .corner-anchor::after {
+  content: none !important;
+}
+
+/* Disabled */
+.tool-btn-icon[disabled],
+.tool-btn-sliced[disabled] {
+  opacity: .5;
+  filter: grayscale(.25);
+  cursor: not-allowed;
+}
+
+
+.tool-btn-icon .corner-anchor,
+.tool-btn-sliced .corner-anchor {
+  position: static;
+  inset: auto;
+  pointer-events: none;
 }
