@@ -9,10 +9,13 @@ export const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
 
 /**
- * Нормализация идентификатора:
+ * Нормализация идентификатора (строгий ASCII-вариант):
  * - оставляем только [A-Za-z0-9_]
  * - убираем подчёркивания по краям
  * - если начинается с цифры — добавляем '_' в начало
+ *
+ * ⚠️ Для пользовательского ввода мы теперь используем "мягкий" фильтр
+ * в компонентах/сторе. Эта функция оставлена для обратной совместимости.
  */
 export function sanitizeIdentifierInput(raw: string) {
   let s = (raw ?? "").replace(/[^A-Za-z0-9_]/g, "");
@@ -26,7 +29,7 @@ export function toSingular(n: string) {
   const s = (n ?? "").toLowerCase();
   if (s.endsWith("ies")) return n.slice(0, -3) + "y";
   if (s.endsWith("ses")) return n.slice(0, -2);
-  if (s.endsWith("s")) return n.slice(0, -1);
+  if (s.endsWith("s"))  return n.slice(0, -1);
   return n;
 }
 
@@ -42,9 +45,9 @@ export function snake(name: string): string {
 }
 
 /* ====== Ограничения имён и уникализация ====== */
-
-export const ENTITY_NAME_MAX = 32;
-export const ATTR_NAME_MAX   = 32;
+/** Выровняли с хранилищем: 64 символа */
+export const ENTITY_NAME_MAX = 64;
+export const ATTR_NAME_MAX   = 64;
 
 /** Делает имя уникальным в рамках множества used (без учёта регистра) */
 export function makeUnique(base: string, used: Set<string>) {
@@ -55,7 +58,7 @@ export function makeUnique(base: string, used: Set<string>) {
   return `${base}_${i}`;
 }
 
-/** Нормализовать имя сущности и сделать уникальным */
+/** Нормализовать имя сущности и сделать уникальным (строгий вариант) */
 export function normalizeEntityName(raw: string, used: Set<string>) {
   let s = sanitizeIdentifierInput(raw);
   if (!s) s = "Entity";
@@ -63,7 +66,7 @@ export function normalizeEntityName(raw: string, used: Set<string>) {
   return makeUnique(s, used);
 }
 
-/** Нормализовать имя атрибута и сделать уникальным (в рамках сущности) */
+/** Нормализовать имя атрибута и сделать уникальным (строгий вариант) */
 export function normalizeAttributeName(raw: string, used: Set<string>) {
   let s = sanitizeIdentifierInput(raw);
   if (!s) s = "field";

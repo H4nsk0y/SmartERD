@@ -1,10 +1,5 @@
-// frontend/src/store/useERStore.ts
 import { create } from "zustand";
 import { nanoid } from "nanoid";
-import {
-  normalizeEntityName,
-  normalizeAttributeName,
-} from "../canvas/utils";
 
 /* ---------- Типы ---------- */
 
@@ -66,6 +61,43 @@ const clone = <T,>(v: T): T => {
     : JSON.parse(JSON.stringify(v));
 };
 
+/* ---------- Мягкие нормалайзеры имен (разрешаем _ и -) ---------- */
+
+const ENTITY_NAME_MAX = 64;
+const ATTR_NAME_MAX = 64;
+
+/** Пропускаем буквы/цифры/подчёркивание/дефис и одинарные пробелы по краям обрезаем */
+function filterIdentifier(input: string, maxLen: number): string {
+  const onlyAllowed = (input ?? "")
+    // заменим запрещённые на пусто
+    .replace(/[^\p{L}\p{N}_\- ]+/gu, "")
+    // схлопнем повторные пробелы
+    .replace(/\s+/g, " ")
+    .trim();
+  return onlyAllowed.slice(0, maxLen);
+}
+
+/** Уникализатор: если занято — добавляем _2/_3/... (case-insensitive) */
+function uniquify(base: string, usedLower: Set<string>): string {
+  let name = base || "Entity";
+  let i = 2;
+  while (usedLower.has(name.toLowerCase())) {
+    name = `${base || "Entity"}_${i}`;
+    i += 1;
+  }
+  return name;
+}
+
+function normalizeEntityNameLoose(raw: string, usedLower: Set<string>) {
+  const filtered = filterIdentifier(raw, ENTITY_NAME_MAX);
+  return uniquify(filtered || "Entity", usedLower);
+}
+
+function normalizeAttributeNameLoose(raw: string, usedLower: Set<string>) {
+  const filtered = filterIdentifier(raw, ATTR_NAME_MAX);
+  return uniquify(filtered || "attr", usedLower);
+}
+
 interface ERState {
   entities: Entity[];
   relationships: Relationship[];
@@ -79,6 +111,11 @@ interface ERState {
   // --- атрибуты ---
   addAttribute: (entityId: string, name: string, type: string, isPrimaryKey?: boolean) => void;
   removeAttribute: (entityId: string, attrId: string) => void;
+
+  /** NEW: правки существующих атрибутов */
+  updateAttributeName: (entityId: string, attrId: string, newName: string) => void;
+  updateAttributeType: (entityId: string, attrId: string, newType: string) => void;
+  setAttributePrimaryKey: (entityId: string, attrId: string, isPrimary: boolean) => void;
 
   // --- связи ---
   addRelationship: (from: string, to: string, type: Relationship["type"]) => void;
@@ -131,7 +168,7 @@ export const useERStore = create<ERState>((set, get) => {
       pushHistory();
       set((s) => {
         const used = new Set(s.entities.map((e) => e.name.toLowerCase()));
-        const final = normalizeEntityName(name, used);
+        const final = normalizeEntityNameLoose(name, used);
         return {
           entities: [...s.entities, { id: nanoid(), name: final, x, y, attributes: [] }],
         };
@@ -161,7 +198,7 @@ export const useERStore = create<ERState>((set, get) => {
             .filter((e) => e.id !== id)
             .map((e) => e.name.toLowerCase())
         );
-        const final = normalizeEntityName(newName, used);
+        const final = normalizeEntityNameLoose(newName, used);
         return {
           entities: s.entities.map((e) => (e.id === id ? { ...e, name: final } : e)),
         };
@@ -175,8 +212,8 @@ export const useERStore = create<ERState>((set, get) => {
         return {
           entities: s.entities.map((e) => {
             if (e.id !== entityId) return e;
-            const usedAttr = new Set(e.attributes.map((a) => a.name.toLowerCase()));
-            const finalName = normalizeAttributeName(name, usedAttr);
+            const usedLower = new Set(e.attributes.map((a) => a.name.toLowerCase()));
+            const finalName = normalizeAttributeNameLoose(name, usedLower);
             return {
               ...e,
               attributes: [
@@ -197,6 +234,65 @@ export const useERStore = create<ERState>((set, get) => {
         entities: s.entities.map((e) =>
           e.id === entityId ? { ...e, attributes: e.attributes.filter((a) => a.id !== attrId) } : e
         ),
+      }));
+    },
+
+    /** NEW: имя атрибута с уникализацией внутри сущности */
+    updateAttributeName: (entityId, attrId, newName) => {
+      pushHistory();
+      set((s) => ({
+        entities: s.entities.map((e) => {
+          if (e.id !== entityId) return e;
+          const used = new Set(
+            e.attributes
+              .filter((a) => a.id !== attrId)
+              .map((a) => a.name.toLowerCase())
+          );
+          const final = normalizeAttributeNameLoose(newName, used);
+          return {
+            ...e,
+            attributes: e.attributes.map((a) =>
+              a.id === attrId ? { ...a, name: final } : a
+            ),
+          };
+        }),
+      }));
+    },
+
+    /** NEW: тип атрибута */
+    updateAttributeType: (entityId, attrId, newType) => {
+      pushHistory();
+      set((s) => ({
+        entities: s.entities.map((e) =>
+          e.id === entityId
+            ? {
+                ...e,
+                attributes: e.attributes.map((a) =>
+                  a.id === attrId ? { ...a, type: newType } : a
+                ),
+              }
+            : e
+        ),
+      }));
+    },
+
+    /** NEW: установка/снятие PK (если ставим — снимаем у остальных в сущности) */
+    setAttributePrimaryKey: (entityId, attrId, isPrimary) => {
+      pushHistory();
+      set((s) => ({
+        entities: s.entities.map((e) => {
+          if (e.id !== entityId) return e;
+          return {
+            ...e,
+            attributes: e.attributes.map((a) =>
+              a.id === attrId
+                ? { ...a, isPrimaryKey: isPrimary }
+                : isPrimary
+                ? { ...a, isPrimaryKey: false }
+                : a
+            ),
+          };
+        }),
       }));
     },
 
@@ -254,18 +350,20 @@ export const useERStore = create<ERState>((set, get) => {
     /* ---------- Импорт / Сброс ---------- */
     setDiagramData: (entities, relationships) => {
       pushHistory();
-      // Нормализуем и уникализируем имена при импорте
+      // Мягко нормализуем и уникализируем имена при импорте (сохраняя _ и -)
       const result: Entity[] = [];
       for (const e of entities || []) {
         const usedEnt = new Set(result.map((x) => x.name.toLowerCase()));
-        const finalEntName = normalizeEntityName(e.name ?? "", usedEnt);
+        const finalEntName = normalizeEntityNameLoose(e.name ?? "", usedEnt);
+
         const usedAttr = new Set<string>();
         const attrs =
           (e.attributes ?? []).map((a) => {
-            const finalAttr = normalizeAttributeName(a.name ?? "", usedAttr);
+            const finalAttr = normalizeAttributeNameLoose(a.name ?? "", usedAttr);
             usedAttr.add(finalAttr.toLowerCase());
             return { ...a, name: finalAttr };
           });
+
         result.push({ ...clone(e), name: finalEntName, attributes: attrs });
       }
       set(() => ({

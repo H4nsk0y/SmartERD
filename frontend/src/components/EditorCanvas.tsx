@@ -2,8 +2,12 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useERStore } from "../store/useERStore";
 import { generateSQL } from "../utils/generateSQL";
+import { validateModel, type ValidationIssue } from "../utils/validateModel";
 
-import SQLPanel, { type SqlDialect } from "../canvas/components/SQLPanel";
+import SQLPanel from "../canvas/components/SQLPanel";
+import AIPanel from "../canvas/components/AIPanel";
+import type { SqlDialect } from "../utils/generateSQL";
+import type { SqlDialect as PanelDialect } from "../canvas/components/SQLPanel";
 import RelationInspector from "../canvas/components/RelationInspector";
 import LinkHintToast from "../canvas/components/LinkHintToast";
 import RelationsSvg from "../canvas/components/RelationsSvg";
@@ -11,9 +15,12 @@ import RelationLabel from "../canvas/components/RelationLabel";
 import CanvasGrid from "../canvas/components/CanvasGrid";
 import Minimap from "../canvas/components/Minimap";
 import EntitiesLayer from "../canvas/components/EntitiesLayer";
+import ValidationHints from "../canvas/components/ValidationHints";
 import { useCamera } from "../canvas/hooks/useCamera";
 import type { FKForm as FKFormT, LinkForm as LinkFormT, Size } from "../canvas/types";
 import EditorToolbar from "../canvas/components/EditorToolbar";
+import ConfirmModal from "../canvas/components/ConfirmModal";
+import { useAppStore } from "../store/useAppStore";
 
 const GRID = 32;
 const WORLD_W = 50000;
@@ -21,6 +28,37 @@ const WORLD_H = 50000;
 
 type RelationKind = "one-to-one" | "one-to-many" | "many-to-many";
 const snap = (v: number) => Math.round(v / GRID) * GRID;
+
+/** Смещаем диаграмму так, чтобы не было отрицательных координат и минимальные x/y ≥ margin */
+function normalizeDiagramPositions(
+  data: { entities?: any[]; relationships?: any[] },
+  margin = 40
+) {
+  const ents = Array.isArray(data?.entities) ? data.entities : [];
+  if (ents.length === 0) return data;
+
+  let minX = Infinity, minY = Infinity;
+  for (const e of ents) {
+    const x = typeof e.x === "number" ? e.x : 0;
+    const y = typeof e.y === "number" ? e.y : 0;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+  }
+
+  if (minX >= margin && minY >= margin) return data;
+
+  const dx = (minX < margin) ? (margin - minX) : 0;
+  const dy = (minY < margin) ? (margin - minY) : 0;
+
+  return {
+    entities: ents.map(e => ({
+      ...e,
+      x: (typeof e.x === "number" ? e.x : 0) + dx,
+      y: (typeof e.y === "number" ? e.y : 0) + dy,
+    })),
+    relationships: Array.isArray(data?.relationships) ? data.relationships : []
+  };
+}
 
 export default function EditorCanvas() {
   const {
@@ -45,6 +83,9 @@ export default function EditorCanvas() {
     redo,
   } = useERStore();
 
+  // Настройки из стора (persist)
+  const { defaultShowMinimap, defaultShowSqlPanel, confirmDelete } = useAppStore();
+
   // UI
   const [isAddingEntity, setIsAddingEntity] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
@@ -53,8 +94,15 @@ export default function EditorCanvas() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [hoveredRel, setHoveredRel] = useState<string | null>(null);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
-  const [showMinimap, setShowMinimap] = useState(true);
-  const [showSqlPanel, setShowSqlPanel] = useState(true); // переключатель SQL-панели
+
+  // локальные видимости панелей (инициализируем из настроек)
+  const [showMinimap, setShowMinimap] = useState<boolean>(defaultShowMinimap);
+  const [showSqlPanel, setShowSqlPanel] = useState<boolean>(defaultShowSqlPanel);
+  const [showAIPanel, setShowAIPanel] = useState<boolean>(false);
+
+  // модалки подтверждений
+  const [confirmRelId, setConfirmRelId] = useState<string | null>(null);
+  const [confirmClearOpen, setConfirmClearOpen] = useState<boolean>(false);
 
   // toast
   const [linkHintPulse, setLinkHintPulse] = useState(0);
@@ -64,7 +112,20 @@ export default function EditorCanvas() {
   const [sqlOut, setSqlOut] = useState<string>("");
   const [dialect, setDialect] = useState<SqlDialect>("postgres");
 
-  // локальный ввод атрибутов (для EntitiesLayer форм)
+  const normalizeDialect = (d: PanelDialect): SqlDialect => {
+    // generateSQL поддерживает postgres|mysql; остальные маппим в postgres.
+    if (d === "postgres" || d === "mysql") return d;
+    return "postgres";
+  };
+
+  useEffect(() => {
+    if (!sqlOut) return;
+    const sql = generateSQL(entities, relationships, { dialect });
+    setSqlOut(sql);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialect]);
+
+  // локальный ввод атрибутов
   const [newAttrName, setNewAttrName] = useState("");
   const [newAttrType, setNewAttrType] = useState("");
   const [isPrimaryKey, setIsPrimaryKey] = useState(false);
@@ -116,6 +177,37 @@ export default function EditorCanvas() {
   // camera
   const camera = useCamera({ minScale: 0.3, maxScale: 3, initialScale: 1 });
 
+  // ====== ВАЛИДАЦИЯ В РЕАЛ-ТАЙМЕ ======
+  const validation = useMemo(() => validateModel(entities, relationships), [entities, relationships]);
+  const [issues, setIssues] = useState<ValidationIssue[]>(validation.issues);
+  const [hintsOpen, setHintsOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    setIssues(validation.issues);
+  }, [validation.issues]);
+
+  const jumpToWhere = (whereIds: string[]) => {
+    const entityId = whereIds.find(id => entities.some(e => e.id === id));
+    if (entityId) {
+      const e = entities.find(x => x.id === entityId)!;
+      camera.centerOn(canvasRef.current, e.x + 100, e.y + 60);
+      return;
+    }
+    const relId = whereIds.find(id => relationships.some(r => r.id === id));
+    if (relId) {
+      const r = relationships.find(x => x.id === relId)!;
+      const from = entities.find(e => e.id === r.from);
+      const to   = entities.find(e => e.id === r.to);
+      if (from && to) {
+        const midX = (from.x + to.x) / 2;
+        const midY = (from.y + to.y) / 2;
+        camera.centerOn(canvasRef.current, midX, midY);
+      }
+      setSelectedRelationship(relId);
+      setInspectorOpen(true);
+    }
+  };
+
   // размеры карточек -> мировые
   useEffect(() => {
     const observers: Record<string, ResizeObserver> = {};
@@ -140,7 +232,7 @@ export default function EditorCanvas() {
     return () => Object.values(observers).forEach((ro) => ro.disconnect());
   }, [entities, editingId, camera.scale]);
 
-  // колесо: нативно (passive: false), чтобы работал preventDefault
+  // колесо: нативно (passive: false)
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
@@ -162,7 +254,7 @@ export default function EditorCanvas() {
     };
   }, []);
 
-  // Esc снимает режим добавления И закрывает инспектор
+  // Esc
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -174,7 +266,6 @@ export default function EditorCanvas() {
           setInspectorOpen(false);
           setSelectedRelationship(null);
           setHoveredRel(null);
-          // при закрытии — сбрасываем локальные черновики
           setFkForm(defaultFkForm);
           setLinkForm(defaultLinkForm);
         }
@@ -184,21 +275,30 @@ export default function EditorCanvas() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isAddingEntity, inspectorOpen]);
 
-  // Delete/Backspace удаляет связь по hover (если инспектор закрыт)
+  // Delete/Backspace — удаление связи (с подтверждением по настройке)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (inspectorOpen) return;
       if ((e.key === "Delete" || e.key === "Backspace") && hoveredRel) {
         const inInput = (e.target as HTMLElement)?.closest("input, textarea, select, [contenteditable]");
         if (inInput) return;
-        useERStore.getState().removeRelationship(hoveredRel);
-        setSelectedRelationship(null);
-        setHoveredRel(null);
+
+        if (confirmDelete) {
+          setConfirmRelId(hoveredRel);
+        } else {
+          useERStore.getState().removeRelationship(hoveredRel);
+          setSelectedRelationship(null);
+          setHoveredRel(null);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [hoveredRel, inspectorOpen, setSelectedRelationship]);
+  }, [hoveredRel, inspectorOpen, confirmDelete, setSelectedRelationship]);
+
+  // Синхронизация локальной видимости панелей с настройками
+  useEffect(() => { setShowMinimap(defaultShowMinimap); }, [defaultShowMinimap]);
+  useEffect(() => { setShowSqlPanel(defaultShowSqlPanel); }, [defaultShowSqlPanel]);
 
   // Undo/Redo
   useEffect(() => {
@@ -215,7 +315,6 @@ export default function EditorCanvas() {
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
-  // ---- ДЕФОЛТНОЕ УНИКАЛЬНОЕ ИМЯ ДЛЯ НОВОЙ СУЩНОСТИ ----
   const nextDefaultEntityName = () => {
     const base = "Entity";
     const used = new Set(entities.map((e) => e.name.toLowerCase()));
@@ -229,7 +328,6 @@ export default function EditorCanvas() {
     return candidate;
   };
 
-  // click на пустом месте → добавить сущность
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isAddingEntity) return;
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -294,7 +392,7 @@ export default function EditorCanvas() {
     }
   };
 
-  // Утилита: инициализация черновиков форм из стора (по текущей выбранной связи)
+  // инициализация форм инспектора
   const initFormsFromSelected = () => {
     if (!selectedRel) return;
     if (selectedRel.type === "many-to-many") {
@@ -307,7 +405,6 @@ export default function EditorCanvas() {
         onUpdate: (selectedRel as any)?.link?.onUpdate ?? undefined,
         index: (selectedRel as any)?.link?.index ?? true,
       });
-      // на всякий случай чистим FK-форму
       setFkForm(defaultFkForm);
     } else {
       setFkForm({
@@ -319,12 +416,10 @@ export default function EditorCanvas() {
         onUpdate: (selectedRel as any)?.fk?.onUpdate ?? undefined,
         index: (selectedRel as any)?.fk?.index ?? true,
       });
-      // и наоборот — чистим Link-форму
       setLinkForm(defaultLinkForm);
     }
   };
 
-  // Открытие инспектора: когда он становится open И есть выбранная связь — подхватываем актуальные данные из стора
   useEffect(() => {
     if (inspectorOpen && selectedRel) {
       initFormsFromSelected();
@@ -375,9 +470,18 @@ export default function EditorCanvas() {
     reader.onload = (event) => {
       try {
         const text = (event.target?.result as string) || "";
-        const data = JSON.parse(text);
-        if (data.entities?.length || data.relationships?.length) {
+        const raw = JSON.parse(text);
+        if (raw.entities?.length || raw.relationships?.length) {
+          const data = normalizeDiagramPositions(raw, 40);
           setDiagramData(data.entities || [], data.relationships || []);
+
+          // После установки — вписать в экран
+          setTimeout(() => {
+            const boxes = (data.entities || []).map((en: any) => ({
+              x: en.x, y: en.y, w: 224, h: 80,
+            }));
+            camera.fitAll(canvasRef.current, boxes, 64);
+          }, 0);
         } else {
           alert("Импортировать нечего — файл не содержит данных ER-модели.");
         }
@@ -391,12 +495,29 @@ export default function EditorCanvas() {
 
   const handleGenerateSQL = () => {
     if (entities.length === 0) { alert("ER-модель пустая — нечего преобразовывать в SQL."); return; }
-    const sql = generateSQL(entities, relationships);
+
+    const { ok, issues } = validateModel(entities, relationships);
+    if (!ok) {
+      alert(
+        "Найдены проблемы:\n\n" +
+        issues.map(i => `• [${i.level}] ${i.message}${i.suggestion ? `\n  → ${i.suggestion}` : ""}`).join("\n\n")
+      );
+      setHintsOpen(true);
+      return;
+    } else {
+      const hints = issues.filter(i => i.level !== "error");
+      if (hints.length > 0) {
+        setHintsOpen(true);
+      }
+    }
+
+    const sql = generateSQL(entities, relationships, { dialect });
     setSqlOut(sql);
-    if (!showSqlPanel) setShowSqlPanel(true); // если панель скрыта — покажем её
+    setShowSqlPanel(true);
+    setShowAIPanel(false);
   };
 
-  // Fit / 1:1
+  // Fit
   const handleFitAll = () => {
     const boxes = entities.map((e) => ({
       x: e.x,
@@ -408,6 +529,29 @@ export default function EditorCanvas() {
   };
   const handleReset1x = () => camera.reset1x();
 
+  // Очистить всё (с учётом настройки confirmDelete)
+  const handleClearAll = () => {
+    if (confirmDelete) {
+      setConfirmClearOpen(true);
+    } else {
+      clearAll();
+      setSelectedRelationship(null);
+      setHoveredRel(null);
+    }
+  };
+
+  // --- Нативный стоп колеса на обёртке подсказок ---
+  const hintsWrapRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = hintsWrapRef.current;
+    if (!el) return;
+    const stop = (ev: WheelEvent) => {
+      ev.stopPropagation();
+    };
+    el.addEventListener("wheel", stop, { passive: true });
+    return () => el.removeEventListener("wheel", stop);
+  }, []);
+
   return (
     <div className="w-full h-full flex min-h-0 overflow-hidden items-stretch">
       {/* Левая колонка */}
@@ -418,18 +562,33 @@ export default function EditorCanvas() {
             isLinking={isLinking}
             showMinimap={showMinimap}
             showSqlPanel={showSqlPanel}
+            showAIPanel={showAIPanel}
             onAddEntity={() => { setIsAddingEntity(true); setIsLinking(false); }}
             onToggleLink={() => { setIsLinking((v) => !v); setIsAddingEntity(false); setSelectedForLink(null); }}
             onExportJSON={handleExportJSON}
             onImportJSON={handleImportJSON}
             onGenerateSQL={handleGenerateSQL}
-            onToggleSqlPanel={() => setShowSqlPanel((v) => !v)}
-            onClearAll={clearAll}
+            onToggleSqlPanel={() => {
+              setShowSqlPanel(v => {
+                const next = !v;
+                if (next) setShowAIPanel(false);
+                return next;
+              });
+            }}
+            onToggleAIPanel={() => {
+              setShowAIPanel(v => {
+                const next = !v;
+                if (next) setShowSqlPanel(false);
+                return next;
+              });
+            }}
+            onClearAll={handleClearAll}
             onFitAll={handleFitAll}
             onReset1x={handleReset1x}
             onToggleMinimap={() => setShowMinimap((v) => !v)}
           />
         </div>
+
         {/* Canvas */}
         <div
           ref={canvasRef}
@@ -476,7 +635,7 @@ export default function EditorCanvas() {
               onClick={(id) => {
                 setActiveMenu(null);
                 setSelectedRelationship(id);
-                setInspectorOpen(true);         // Открываем инспектор…
+                setInspectorOpen(true);
               }}
               worldSize={{ w: WORLD_W, h: WORLD_H }}
               renderLabel={({ id, x, y, kind }) => (
@@ -533,6 +692,21 @@ export default function EditorCanvas() {
             />
           )}
 
+          {/* ПАНЕЛЬ ПОДСКАЗОК */}
+          <div
+            ref={hintsWrapRef}
+            className="absolute left-2 bottom-2 z-40"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ValidationHints
+              issues={issues}
+              open={hintsOpen}
+              onToggle={() => setHintsOpen(v => !v)}
+              onJump={jumpToWhere}
+            />
+          </div>
+
           {/* Инспектор */}
           {inspectorOpen && selectedRel && (
             <RelationInspector
@@ -542,8 +716,8 @@ export default function EditorCanvas() {
               onClose={() => {
                 setInspectorOpen(false);
                 setSelectedRelationship(null);
-                setHoveredRel(null);           // убираем подсветку
-                setFkForm(defaultFkForm);      // чистим локальные формы
+                setHoveredRel(null);
+                setFkForm(defaultFkForm);
                 setLinkForm(defaultLinkForm);
               }}
               onSaveFK={(patch: Partial<FKFormT>) => {
@@ -557,9 +731,7 @@ export default function EditorCanvas() {
                 setTimeout(() => setJustSaved(null), 1200);
               }}
               onReset={() => {
-                // Чистим метаданные в сторе…
                 updateRelationshipMeta(selectedRel.id, { fk: undefined, link: undefined });
-                // …и сразу же откатываем локальные формы к дефолтным по текущему типу связи
                 if (selectedRel.type === "many-to-many") {
                   setLinkForm(defaultLinkForm);
                 } else {
@@ -580,15 +752,65 @@ export default function EditorCanvas() {
         </div>
       </div>
 
-      {/* Правая колонка: SQL — рендерим только когда включена */}
-      {showSqlPanel && (
+      {/* Модалка подтверждения очистки всей диаграммы */}
+      {confirmClearOpen && (
+        <ConfirmModal
+          open={true}
+          title="Очистить диаграмму?"
+          message="Удалить все сущности и связи без возможности восстановления?"
+          confirmText="Очистить"
+          cancelText="Отмена"
+          onCancel={() => setConfirmClearOpen(false)}
+          onConfirm={() => {
+            clearAll();
+            setSelectedRelationship(null);
+            setHoveredRel(null);
+            setConfirmClearOpen(false);
+          }}
+        />
+      )}
+
+      {/* Модалка подтверждения удаления связи */}
+      {confirmRelId && (() => {
+        const rel = relationships.find(r => r.id === confirmRelId);
+        const fromName = rel ? (entities.find(en => en.id === rel.from)?.name ?? "from") : "";
+        const toName   = rel ? (entities.find(en => en.id === rel.to)?.name   ?? "to")   : "";
+
+        return (
+          <ConfirmModal
+            open={true}
+            title="Удалить связь?"
+            message={`Удалить связь между «${fromName}» и «${toName}»?`}
+            confirmText="Удалить"
+            cancelText="Отмена"
+            onCancel={() => setConfirmRelId(null)}
+            onConfirm={() => {
+              if (confirmRelId) {
+                useERStore.getState().removeRelationship(confirmRelId);
+              }
+              setSelectedRelationship(null);
+              setHoveredRel(null);
+              setConfirmRelId(null);
+            }}
+          />
+        );
+      })()}
+
+      {/* Правая колонка: показываем ИЛИ SQL, ИЛИ AI панель */}
+      {showSqlPanel && !showAIPanel && (
         <SQLPanel
           className="h-full"
           sql={sqlOut}
           dialect={dialect}
-          onChangeDialect={(d) => { setDialect(d); }}
+          onChangeDialect={(d: PanelDialect) => { setDialect(normalizeDialect(d)); }}
           onCopyAll={() => { if (sqlOut) navigator.clipboard?.writeText(sqlOut).catch(() => {}); }}
+          editable={true}
+          onChangeSql={(s) => setSqlOut(s)}
         />
+      )}
+
+      {showAIPanel && !showSqlPanel && (
+        <AIPanel className="h-full" />
       )}
     </div>
   );

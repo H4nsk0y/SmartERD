@@ -1,10 +1,19 @@
-/**
- * canvas/components/SQLPanel.tsx
- * Правый столбец с результатом генерации SQL.
- * Скролл ТОЛЬКО внутри области кода; шапка фиксированной высоты.
- */
+// frontend/src/canvas/components/SQLPanel.tsx
+// Правый столбец с результатом генерации SQL.
+// Теперь с редактированием и подсветкой синтаксиса (CodeMirror).
 
 import * as React from "react";
+import { useEffect, useMemo, useState } from "react";
+import CodeMirror from "@uiw/react-codemirror";
+import {
+  sql as sqlLang,
+  PostgreSQL,
+  MySQL,
+  SQLite,
+  MSSQL,
+  SQLDialect as CmSqlDialect,
+} from "@codemirror/lang-sql";
+import { oneDark } from "@codemirror/theme-one-dark";
 
 export type SqlDialect = "postgres" | "mysql" | "sqlite" | "mssql";
 
@@ -14,28 +23,78 @@ export default function SQLPanel({
   onChangeDialect,
   onCopyAll,
   className = "",
+  // новые необязательные пропсы — для обратной совместимости можно не передавать
+  editable = true,
+  onChangeSql, // если не передан — просто локально редактируем без поднятия наверх
 }: {
   sql: string;
   dialect: SqlDialect;
   onChangeDialect: (d: SqlDialect) => void;
   onCopyAll: () => void;
   className?: string;
+  editable?: boolean;
+  onChangeSql?: (next: string) => void;
 }) {
-  const [open, setOpen] = React.useState(false);
-  const [copied, setCopied] = React.useState(false);
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [value, setValue] = useState<string>(sql ?? "");
 
-  React.useEffect(() => {
+  // синхронизация входного sql -> редактор
+  useEffect(() => {
+    setValue(sql ?? "");
+  }, [sql]);
+
+  useEffect(() => {
     if (!copied) return;
     const t = setTimeout(() => setCopied(false), 1200);
     return () => clearTimeout(t);
   }, [copied]);
 
+  // тёмная тема: читаем класс на <html>
+  const isDark = useIsDarkMode();
+
+  // маппинг диалекта на CodeMirror
+  const cmDialect: CmSqlDialect = useMemo(() => {
+    switch (dialect) {
+      case "postgres":
+        return PostgreSQL;
+      case "mysql":
+        return MySQL;
+      case "sqlite":
+        return SQLite;
+      case "mssql":
+        return MSSQL;
+      default:
+        return PostgreSQL;
+    }
+  }, [dialect]);
+
+  const extensions = useMemo(() => [sqlLang({ dialect: cmDialect })], [cmDialect]);
+
+  const handleChange = (next: string) => {
+    setValue(next);
+    onChangeSql?.(next);
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard?.writeText(value);
+      onCopyAll?.(); // для обратной совместимости — дергаем старый колбэк тоже
+      setCopied(true);
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <aside
-      className={`shrink-0 h-full min-h-0 flex flex-col overflow-hidden border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 ${className}`}
+      className={[
+        "shrink-0 h-full min-h-0 flex flex-col overflow-hidden border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900",
+        className,
+      ].join(" ")}
       style={{ width: 420, minWidth: 360, maxWidth: 520 }}
     >
-      {/* Шапка панели (не прокручивается) */}
+      {/* Шапка панели (фиксированная) */}
       <div className="shrink-0 p-3 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">
         {/* Диалект */}
         <div className="relative">
@@ -69,10 +128,7 @@ export default function SQLPanel({
 
         {/* Скопировать */}
         <button
-          onClick={() => {
-            onCopyAll();
-            setCopied(true);
-          }}
+          onClick={handleCopy}
           className="ml-auto px-3 py-1.5 rounded-md text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
           title="Скопировать весь SQL"
         >
@@ -80,18 +136,24 @@ export default function SQLPanel({
         </button>
       </div>
 
-      {/* Область кода: прокручивается ТОЛЬКО она.
-          ВАЖНО: h-0 + flex-1 + min-h-0 не даёт блоку растягивать родителей. */}
-      <div className="h-0 flex-1 min-h-0 overflow-auto p-3">
-        {sql ? (
-          <pre className="m-0 text-xs leading-5 whitespace-pre-wrap break-words text-gray-900 dark:text-gray-100">
-            <code className="block">{sql}</code>
-          </pre>
-        ) : (
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            Нажми «🧩 Сгенерировать SQL», чтобы увидеть результат здесь.
-          </div>
-        )}
+      {/* Редактор: прокручивается только он */}
+      <div className="h-0 flex-1 min-h-0 overflow-hidden">
+        <CodeMirror
+          value={value}
+          onChange={handleChange}
+          extensions={extensions}
+          theme={isDark ? oneDark : undefined}
+          basicSetup={{
+            lineNumbers: true,
+            foldGutter: true,
+            highlightActiveLine: true,
+            autocompletion: true,
+            bracketMatching: true,
+          }}
+          editable={editable}
+          height="100%"
+          className="h-full"
+        />
       </div>
     </aside>
   );
@@ -110,4 +172,20 @@ function labelOf(d: SqlDialect) {
     default:
       return d;
   }
+}
+
+function useIsDarkMode() {
+  const [dark, setDark] = useState<boolean>(() =>
+    typeof document !== "undefined"
+      ? document.documentElement.classList.contains("dark")
+      : false
+  );
+  useEffect(() => {
+    const mo = new MutationObserver(() =>
+      setDark(document.documentElement.classList.contains("dark"))
+    );
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => mo.disconnect();
+  }, []);
+  return dark;
 }

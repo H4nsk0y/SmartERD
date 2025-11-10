@@ -3,85 +3,84 @@ import * as React from "react";
 export type EditorToolbarProps = {
   isLinking: boolean;
   showMinimap: boolean;
-  showSqlPanel: boolean;                    // NEW
+  showSqlPanel: boolean;
+  showAIPanel: boolean;                 // NEW
   onAddEntity: () => void;
   onToggleLink: () => void;
   onExportJSON: () => void;
   onImportJSON: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onGenerateSQL: () => void;
-  onToggleSqlPanel: () => void;             // NEW
+  onToggleSqlPanel: () => void;
+  onToggleAIPanel: () => void;          // NEW
   onClearAll: () => void;
   onFitAll: () => void;
   onReset1x: () => void;
   onToggleMinimap: () => void;
 };
 
+function IconBtn(
+  props: React.PropsWithChildren<
+    React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean; label: string }
+  >
+) {
+  const { active, label, className, children, ...rest } = props;
+  return (
+    <button
+      className={[
+        "tool-btn-sliced tool-btn-icon",
+        active ? "ring-2 ring-indigo-400" : "",
+        className || "",
+      ].join(" ")}
+      title={label}
+      aria-label={label}
+      {...rest}
+    >
+      <span className="corner-anchor" />
+      <span aria-hidden="true">{children}</span>
+    </button>
+  );
+}
+
 export default function EditorToolbar(props: EditorToolbarProps) {
   const {
     isLinking,
     showMinimap,
-    showSqlPanel,            // NEW
+    showSqlPanel,
+    showAIPanel,             // NEW
     onAddEntity,
     onToggleLink,
     onExportJSON,
     onImportJSON,
     onGenerateSQL,
-    onToggleSqlPanel,        // NEW
+    onToggleSqlPanel,
+    onToggleAIPanel,         // NEW
     onClearAll,
     onFitAll,
-    onReset1x,
+    // onReset1x,
     onToggleMinimap,
   } = props;
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-3">
-      <button className="tool-btn-sliced" onClick={onAddEntity}>
-        <span className="corner-anchor" />+ Сущность
-      </button>
+    <div className="mb-2 flex items-center gap-3 md:gap-4 flex-nowrap overflow-x-auto px-2 py-1">
+      <IconBtn onClick={onAddEntity} label="Добавить сущность">➕</IconBtn>
+      <IconBtn onClick={onToggleLink} active={isLinking} label="Связять сущности (вкл/выкл)">🔗</IconBtn>
 
-      <button className="tool-btn-sliced" onClick={onToggleLink}>
-        <span className="corner-anchor" />🔗 Связь{isLinking ? " (ON)" : ""}
-      </button>
-
-      <button className="tool-btn-sliced" onClick={onExportJSON}>
-        <span className="corner-anchor" />💾 Экспорт JSON
-      </button>
-
-      <label className="tool-btn-sliced cursor-pointer">
-        <span className="corner-anchor" />📂 Импорт JSON
+      <IconBtn onClick={onExportJSON} label="Экспорт JSON">💾</IconBtn>
+      <label className="tool-btn-sliced tool-btn-icon cursor-pointer" title="Импорт JSON" aria-label="Импорт JSON">
+        <span className="corner-anchor" />
+        <span aria-hidden="true">📂</span>
         <input type="file" accept=".json" onChange={onImportJSON} className="hidden" />
       </label>
 
-      <button className="tool-btn-sliced" onClick={onGenerateSQL}>
-        <span className="corner-anchor" />🧩 Сгенерировать SQL
-      </button>
+      <IconBtn onClick={onGenerateSQL} label="Сгенерировать SQL">🧩</IconBtn>
 
-      {/* NEW: Переключатель SQL-панели — строго после «Сгенерировать SQL» */}
-      <button className="tool-btn-sliced" onClick={onToggleSqlPanel}>
-        <span className="corner-anchor" />
-        {showSqlPanel ? "SQL панель: On" : "SQL панель: Off"}
-      </button>
+      {/* Взаимоисключаемые панели */}
+      <IconBtn onClick={onToggleSqlPanel} active={showSqlPanel} label="SQL-панель (вкл/выкл)">📜</IconBtn>
+      <IconBtn onClick={onToggleAIPanel}  active={showAIPanel}  label="AI-панель (вкл/выкл)">🤖</IconBtn>
 
-      <button className="tool-btn-sliced" onClick={onClearAll}>
-        <span className="corner-anchor" />🗑 Очистить
-      </button>
-
-      <button className="tool-btn-sliced" onClick={onFitAll}>
-        <span className="corner-anchor" />Fit
-      </button>
-
-      <button className="tool-btn-sliced" onClick={onReset1x}>
-        <span className="corner-anchor" />1:1
-      </button>
-
-      <button
-        className="tool-btn-sliced"
-        onClick={onToggleMinimap}
-        title={showMinimap ? "Скрыть мини-карту" : "Показать мини-карту"}
-      >
-        <span className="corner-anchor" />
-        {showMinimap ? "Minimap: On" : "Minimap: Off"}
-      </button>
+      <IconBtn onClick={onClearAll} label="Очистить">🗑</IconBtn>
+      <IconBtn onClick={onFitAll} label="Fit (вписать всё)">🖼️</IconBtn>
+      <IconBtn onClick={onToggleMinimap} active={showMinimap} label="Minimap (вкл/выкл)">🗺️</IconBtn>
     </div>
   );
 }

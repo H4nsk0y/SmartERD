@@ -1,41 +1,31 @@
-// frontend/src/canvas/components/EntitiesLayer.tsx
 /**
- * Отрисовка карточек сущностей + добавление/удаление атрибутов.
- * Имя сущности/атрибута: только [A-Za-z0-9_], без ведущей цифры, max 32.
+ * Отрисовка карточек сущностей + добавление/удаление/редактирование атрибутов.
+ * Карточка НЕ меняет размеры; редактор атрибута — компактный, в несколько строк.
  */
 
 import React, { memo } from "react";
 import type { Size } from "../types";
-import {
-  sanitizeIdentifierInput,
-  ENTITY_NAME_MAX,
-  ATTR_NAME_MAX,
-} from "../utils";
+import { ENTITY_NAME_MAX, ATTR_NAME_MAX } from "../utils";
+import { useERStore } from "../../store/useERStore";
+import { useAppStore } from "../../store/useAppStore";
+import ConfirmModal from "../components/ConfirmModal";
 
 type Attribute = { id: string; name: string; type: string; isPrimaryKey?: boolean };
 type EntityVM = { id: string; name: string; x: number; y: number; attributes: Attribute[] };
 
 export type EntitiesLayerProps = {
   entities: EntityVM[];
-
-  /** Размеры карточек, измеренные родителем (в мировых координатах) */
   sizes: Record<string, Size>;
-
-  /** refs карточек, чтобы родитель мог их измерять */
   cardRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
 
-  /** id карточки в режиме редактирования атрибутов */
   editingId: string | null;
   setEditingId: React.Dispatch<React.SetStateAction<string | null>>;
 
-  /** id карточки в режиме переименования */
   renamingId: string | null;
   setRenamingId: React.Dispatch<React.SetStateAction<string | null>>;
 
-  /** Подсветка: связана ли сущность с выделенной/ховерной связью */
   isLinked: (entityId: string) => boolean;
 
-  /** Обработчики из стора/родителя */
   onMouseDownEntity: (e: React.MouseEvent<HTMLDivElement>, id: string) => void;
   onEntityClick: (id: string, e: React.MouseEvent) => void;
   renameEntity: (id: string, nextName: string) => void;
@@ -43,7 +33,6 @@ export type EntitiesLayerProps = {
   addAttribute: (entityId: string, name: string, type: string, isPk: boolean) => void;
   removeAttribute: (entityId: string, attrId: string) => void;
 
-  /** Локальный стейт ввода нового атрибута (живёт в родителе, чтобы не терялся) */
   newAttrName: string;
   setNewAttrName: React.Dispatch<React.SetStateAction<string>>;
   newAttrType: string;
@@ -65,6 +54,11 @@ const typeOptions = [
   "FLOAT",
   "DECIMAL(10,2)",
 ];
+
+/** Строгий ASCII: только [A-Za-z0-9_-], без пробелов */
+function allowIdentASCII(input: string, max: number) {
+  return (input ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, max);
+}
 
 function EntitiesLayerImpl(props: EntitiesLayerProps) {
   const {
@@ -89,15 +83,44 @@ function EntitiesLayerImpl(props: EntitiesLayerProps) {
     setIsPrimaryKey,
   } = props;
 
-  /** Локальный черновик имени при переименовании (контролируемый input) */
+  // из стора: правка существующих атрибутов
+  const updateAttributeName = useERStore((s) => s.updateAttributeName);
+  const updateAttributeType = useERStore((s) => s.updateAttributeType);
+  const setAttributePrimary = useERStore((s) => s.setAttributePrimaryKey);
+
+  // настройка подтверждения удаления
+  const confirmDelete = useAppStore((s) => s.confirmDelete);
+
+  // черновик имени сущности при переименовании
   const [renameDraft, setRenameDraft] = React.useState<string>("");
 
-  // Когда начинаем/переключаем переименование — подхватываем текущее имя
+  // инлайн-редактор строки атрибута
+  const [editingAttr, setEditingAttr] = React.useState<{
+    entityId: string;
+    attrId: string;
+    name: string;
+    type: string;
+    isPk: boolean;
+  } | null>(null);
+
+  // подтверждение удаления сущности
+  const [confirmEntity, setConfirmEntity] = React.useState<{ id: string; name: string } | null>(null);
+
   React.useEffect(() => {
     if (!renamingId) return;
     const ent = entities.find((e) => e.id === renamingId);
     setRenameDraft(ent ? ent.name : "");
   }, [renamingId, entities]);
+
+  const commitAttrEdit = React.useCallback(() => {
+    if (!editingAttr) return;
+    const cleanName = allowIdentASCII(editingAttr.name, ATTR_NAME_MAX);
+    const nextType = (editingAttr.type || "").trim();
+    if (cleanName) updateAttributeName(editingAttr.entityId, editingAttr.attrId, cleanName);
+    if (nextType)   updateAttributeType(editingAttr.entityId, editingAttr.attrId, nextType);
+    setAttributePrimary(editingAttr.entityId, editingAttr.attrId, editingAttr.isPk);
+    setEditingAttr(null);
+  }, [editingAttr, updateAttributeName, updateAttributeType, setAttributePrimary]);
 
   return (
     <>
@@ -130,23 +153,19 @@ function EntitiesLayerImpl(props: EntitiesLayerProps) {
                 <input
                   autoFocus
                   value={renameDraft}
-                  onChange={(e) =>
-                    setRenameDraft(
-                      sanitizeIdentifierInput(e.target.value).slice(0, ENTITY_NAME_MAX)
-                    )
-                  }
+                  onChange={(e) => setRenameDraft(allowIdentASCII(e.target.value, ENTITY_NAME_MAX))}
                   onClick={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
-                      const next = sanitizeIdentifierInput(renameDraft).slice(0, ENTITY_NAME_MAX).trim();
+                      const next = allowIdentASCII(renameDraft, ENTITY_NAME_MAX);
                       if (next) renameEntity(entity.id, next);
                       setRenamingId(null);
                     }
                     if (e.key === "Escape") setRenamingId(null);
                   }}
                   onBlur={() => {
-                    const next = sanitizeIdentifierInput(renameDraft).slice(0, ENTITY_NAME_MAX).trim();
+                    const next = allowIdentASCII(renameDraft, ENTITY_NAME_MAX);
                     if (next) renameEntity(entity.id, next);
                     setRenamingId(null);
                   }}
@@ -173,6 +192,7 @@ function EntitiesLayerImpl(props: EntitiesLayerProps) {
                   onClick={(e) => {
                     e.stopPropagation();
                     setEditingId((cur) => (cur === entity.id ? null : entity.id));
+                    setEditingAttr(null);
                   }}
                   className="text-sm text-gray-500 hover:text-indigo-500"
                   title="Редактировать атрибуты"
@@ -183,7 +203,11 @@ function EntitiesLayerImpl(props: EntitiesLayerProps) {
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
-                    removeEntity(entity.id);
+                    if (confirmDelete) {
+                      setConfirmEntity({ id: entity.id, name: entity.name });
+                    } else {
+                      removeEntity(entity.id);
+                    }
                   }}
                   className="text-sm text-red-500 hover:text-red-700"
                   title="Удалить сущность"
@@ -195,27 +219,122 @@ function EntitiesLayerImpl(props: EntitiesLayerProps) {
 
             {/* Список атрибутов */}
             <ul className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-              {entity.attributes.map((a) => (
-                <li
-                  key={a.id}
-                  className="flex justify-between items-center border-top border-gray-200 dark:border-gray-700 pt-1 mt-1"
-                >
-                  <span
-                    className={`${a.isPrimaryKey ? "font-bold text-indigo-600 dark:text-indigo-300" : ""}`}
+              {entity.attributes.map((a) => {
+                const isRowEditing =
+                  editingAttr && editingAttr.entityId === entity.id && editingAttr.attrId === a.id;
+
+                if (isRowEditing) {
+                  const mergedTypeOptions = typeOptions.includes(editingAttr.type)
+                    ? typeOptions
+                    : [...typeOptions, editingAttr.type];
+
+                  return (
+                    <li
+                      key={a.id}
+                      className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            className="mr-1"
+                            checked={editingAttr.isPk}
+                            onChange={(e) =>
+                              setEditingAttr((s) => (s ? { ...s, isPk: e.target.checked } : s))
+                            }
+                          />
+                          PK
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <button
+                            className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700"
+                            onClick={commitAttrEdit}
+                          >
+                            ✓
+                          </button>
+                          <button
+                            className="text-xs bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                            onClick={() => setEditingAttr(null)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+
+                      <input
+                        autoFocus
+                        className="w-full text-sm p-1 border rounded mb-1 dark:bg-gray-900 dark:text-gray-100"
+                        value={editingAttr.name}
+                        maxLength={ATTR_NAME_MAX}
+                        onChange={(e) =>
+                          setEditingAttr((s) =>
+                            s ? { ...s, name: allowIdentASCII(e.target.value, ATTR_NAME_MAX) } : s
+                          )
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitAttrEdit();
+                          if (e.key === "Escape") setEditingAttr(null);
+                        }}
+                      />
+
+                      <select
+                        className="w-full text-sm p-1 border rounded dark:bg-gray-900 dark:text-gray-100"
+                        value={editingAttr.type}
+                        onChange={(e) =>
+                          setEditingAttr((s) => (s ? { ...s, type: e.target.value } : s))
+                        }
+                      >
+                        {mergedTypeOptions.map((t) => (
+                          <option key={t || "_"} value={t}>
+                            {t || "Тип"}
+                          </option>
+                        ))}
+                      </select>
+                    </li>
+                  );
+                }
+
+                // режим просмотра
+                return (
+                  <li
+                    key={a.id}
+                    className="flex justify-between items-center border-top border-gray-200 dark:border-gray-700 pt-1 mt-1"
                   >
-                    {a.isPrimaryKey && "🔑 "}
-                    {a.name}: {a.type}
-                  </span>
-                  <button
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={() => removeAttribute(entity.id, a.id)}
-                    className="text-red-500 hover:text-red-700 text-xs"
-                    title="Удалить атрибут"
-                  >
-                    ✖
-                  </button>
-                </li>
-              ))}
+                    <span className={`${a.isPrimaryKey ? "font-bold text-indigo-600 dark:text-indigo-300" : ""}`}>
+                      {a.isPrimaryKey && "🔑 "}
+                      {a.name}: {a.type}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={() =>
+                          setEditingAttr({
+                            entityId: entity.id,
+                            attrId: a.id,
+                            name: a.name,
+                            type: a.type,
+                            isPk: !!a.isPrimaryKey,
+                          })
+                        }
+                        className="text-xs text-gray-500 hover:text-indigo-600"
+                        title="Редактировать атрибут"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={() => removeAttribute(entity.id, a.id)}
+                        className="text-red-500 hover:text-red-700 text-xs"
+                        title="Удалить атрибут"
+                      >
+                        ✖
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
 
             {/* Редактор: добавить атрибут */}
@@ -227,57 +346,69 @@ function EntitiesLayerImpl(props: EntitiesLayerProps) {
               >
                 <input
                   value={newAttrName}
-                  onChange={(e) => {
-                    const filtered = sanitizeIdentifierInput(e.target.value).slice(0, ATTR_NAME_MAX);
-                    setNewAttrName(filtered);
-                  }}
+                  onChange={(e) => setNewAttrName(allowIdentASCII(e.target.value, ATTR_NAME_MAX))}
                   placeholder="имя"
                   maxLength={ATTR_NAME_MAX}
-                  className="text-sm p-1 border rounded mr-1 w-28 dark:bg-gray-900 dark:text-gray-100"
+                  className="w-full text-sm p-1 border rounded mb-1 dark:bg-gray-900 dark:text-gray-100"
                 />
-                <select
-                  value={newAttrType}
-                  onChange={(e) => setNewAttrType(e.target.value)}
-                  className="text-sm p-1 border rounded mr-1 w-28 dark:bg-gray-900 dark:text-gray-100"
-                >
-                  {typeOptions.map((t) => (
-                    <option key={t || "_"} value={t}>
-                      {t || "Тип"}
-                    </option>
-                  ))}
-                </select>
-                <label className="text-xs text-gray-600 dark:text-gray-300 mr-2">
-                  <input
-                    type="checkbox"
-                    checked={isPrimaryKey}
-                    onChange={(e) => props.setIsPrimaryKey(e.target.checked)}
-                    className="mr-1"
-                  />
-                  PK
-                </label>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!newAttrName || !newAttrType) return;
-                    addAttribute(entity.id, newAttrName, newAttrType, isPrimaryKey);
-                    // reset локального ввода
-                    props.setNewAttrName("");
-                    props.setNewAttrType("");
-                    props.setIsPrimaryKey(false);
-                  }}
-                  className="text-sm bg-indigo-500 text-white px-2 py-1 rounded hover:bg-indigo-600"
-                >
-                  +
-                </button>
+                <div className="flex gap-2 items-center">
+                  <select
+                    value={newAttrType}
+                    onChange={(e) => setNewAttrType(e.target.value)}
+                    className="flex-1 text-sm p-1 border rounded dark:bg-gray-900 dark:text-gray-100"
+                  >
+                    {typeOptions.map((t) => (
+                      <option key={t || "_"} value={t}>
+                        {t || "Тип"}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={isPrimaryKey}
+                      onChange={(e) => props.setIsPrimaryKey(e.target.checked)}
+                    />
+                    PK
+                  </label>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!newAttrName || !newAttrType) return;
+                      addAttribute(entity.id, newAttrName, newAttrType, isPrimaryKey);
+                      props.setNewAttrName("");
+                      props.setNewAttrType("");
+                      props.setIsPrimaryKey(false);
+                    }}
+                    className="text-sm bg-indigo-500 text-white px-2 py-1 rounded hover:bg-indigo-600"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             )}
           </div>
         );
       })}
+
+      {/* Модалка подтверждения удаления сущности (глобально для слоя) */}
+      {confirmEntity && (
+        <ConfirmModal
+          open={true}
+          title="Удалить сущность?"
+          message={`Удалить сущность «${confirmEntity.name}» и все её связи?`}
+          confirmText="Удалить"
+          cancelText="Отмена"
+          onCancel={() => setConfirmEntity(null)}
+          onConfirm={() => {
+            removeEntity(confirmEntity.id);
+            setConfirmEntity(null);
+          }}
+        />
+      )}
     </>
   );
 }
 
-/** memo: снижает количество перерендеров слоя при обновлении стора/камеры */
 const EntitiesLayer = memo(EntitiesLayerImpl);
 export default EntitiesLayer;
