@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { aiChat, type ChatMessage } from "../api/ai";
 
 export default function AIPage() {
-  // простая история: user → assistant
+  // простая история
   const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,7 +45,6 @@ export default function AIPage() {
 
         {/* Карточка с историей сообщений — фиксированная высота, скролл внутри */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow p-0 flex flex-col overflow-hidden">
-          {/* История */}
           <div
             ref={scrollRef}
             className="flex-1 min-h-[320px] max-h-[60vh] overflow-auto divide-y divide-gray-200 dark:divide-gray-700"
@@ -109,7 +108,6 @@ export default function AIPage() {
           </div>
         </div>
 
-        {/* Подсказка */}
         <div className="mt-3 text-xs opacity-70 text-gray-600 dark:text-gray-400">
           Длинные ответы не раздвигают страницу — прокрутите область истории.
         </div>

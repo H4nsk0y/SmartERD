@@ -1,7 +1,6 @@
 /**
  * canvas/components/LinkHintToast
  * Подсказка при включении режима "Связь".
- * Корректный «въезд» снизу: форсируем reflow перед началом анимации.
  */
 
 import * as React from "react";
@@ -34,14 +33,10 @@ export default function LinkHintToast({
       raf.current = null;
     }
 
-    // 1) Поставили off-screen без transition
     setPhase("pre");
 
-    // 2) На следующий кадр форсируем reflow и включаем "show" с transition
     raf.current = requestAnimationFrame(() => {
-      // форсируем reflow, чтобы браузер применил transform из "pre"
-      // и заметил последующий переход к "show"
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+
       containerRef.current && containerRef.current.offsetHeight;
 
       setPhase("show");
@@ -68,16 +63,15 @@ export default function LinkHintToast({
 
   if (phase === "hidden") return null;
 
-  // Плавная кривулька: show — easeOut, hide — easeIn
   const translate =
     phase === "show" ? "translateY(0%)" : "translateY(140%)";
-  const opacity = phase === "show" ? 1 : 0.001; // лёгкое проявление
+  const opacity = phase === "show" ? 1 : 0.001; 
   const transition =
     phase === "show"
       ? "transform 260ms cubic-bezier(0.22,1,0.36,1), opacity 260ms linear"
       : phase === "hide"
       ? "transform 300ms cubic-bezier(0.4,0,1,1), opacity 240ms linear"
-      : "none"; // у pre нет transition, чтобы избежать «моргания»
+      : "none"; 
 
   return (
     <div

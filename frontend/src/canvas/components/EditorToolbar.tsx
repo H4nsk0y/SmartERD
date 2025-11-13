@@ -4,14 +4,14 @@ export type EditorToolbarProps = {
   isLinking: boolean;
   showMinimap: boolean;
   showSqlPanel: boolean;
-  showAIPanel: boolean;                 // NEW
+  showAIPanel: boolean;                 
   onAddEntity: () => void;
   onToggleLink: () => void;
   onExportJSON: () => void;
   onImportJSON: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onGenerateSQL: () => void;
   onToggleSqlPanel: () => void;
-  onToggleAIPanel: () => void;          // NEW
+  onToggleAIPanel: () => void;          
   onClearAll: () => void;
   onFitAll: () => void;
   onReset1x: () => void;
@@ -46,14 +46,14 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     isLinking,
     showMinimap,
     showSqlPanel,
-    showAIPanel,             // NEW
+    showAIPanel,             
     onAddEntity,
     onToggleLink,
     onExportJSON,
     onImportJSON,
     onGenerateSQL,
     onToggleSqlPanel,
-    onToggleAIPanel,         // NEW
+    onToggleAIPanel,         
     onClearAll,
     onFitAll,
     // onReset1x,

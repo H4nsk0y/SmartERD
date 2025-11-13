@@ -18,9 +18,7 @@ html, body, #root {
   min-height: 100%;
 }
 
-/* === Компактные икон-кнопки для тулбара (новый стиль) === */
-/* .tool-btn-sliced остаётся алиасом, чтобы разметку не менять. */
-
+/* === Компактные икон-кнопки для тулбара */
 .tool-btn-icon,
 .tool-btn-sliced {
   position: relative;
@@ -32,16 +30,16 @@ html, body, #root {
   height: 44px;
   padding: 0;
 
-  /* НОВОЕ: немного больше отступов между кнопками */
+
   margin: 0 8px 8px 0;
 
-  font-size: 20px;   /* размер эмодзи */
+  font-size: 20px;   
   line-height: 1;
-  color: #1f2937;    /* gray-800 */
+  color: #1f2937;    
   cursor: pointer;
 
   border-radius: 12px;
-  background: rgba(99, 102, 241, 0.10);      /* indigo-500, прозрачно */
+  background: rgba(99, 102, 241, 0.10);      
   border: 1px solid rgba(99, 102, 241, 0.35);
   box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 
@@ -51,7 +49,7 @@ html, body, #root {
     box-shadow .12s ease;
 }
 
-/* Тёмная тема */
+
 .dark .tool-btn-icon,
 .dark .tool-btn-sliced {
   color: #f9fafb;
@@ -60,7 +58,7 @@ html, body, #root {
   box-shadow: 0 1px 2px rgba(0,0,0,0.40);
 }
 
-/* НОВОЕ: лёгкий hover — глубже тень и чуть ярче фон/граница */
+
 @media (hover: hover) {
   .tool-btn-icon:hover,
   .tool-btn-sliced:hover {
@@ -77,7 +75,6 @@ html, body, #root {
   }
 }
 
-/* Аккуратный focus-visible для клавиатуры */
 .tool-btn-icon:focus-visible,
 .tool-btn-sliced:focus-visible {
   outline: none;
@@ -86,7 +83,6 @@ html, body, #root {
     0 4px 10px rgba(0,0,0,0.12);
 }
 
-/* Активное состояние — чуть меньше тень */
 .tool-btn-icon:active,
 .tool-btn-sliced:active {
   box-shadow: 0 2px 6px rgba(0,0,0,0.10);
@@ -104,7 +100,6 @@ html, body, #root {
   content: none !important;
 }
 
-/* Disabled */
 .tool-btn-icon[disabled],
 .tool-btn-sliced[disabled] {
   opacity: .5;

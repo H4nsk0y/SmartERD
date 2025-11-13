@@ -4,9 +4,6 @@
  * Геометрия для линий связей, пересечения с рамками карточек и т.п.
  */
 export type Point = { x: number; y: number };
-
-/** Точка выхода луча из центра прямоугольника к targetCenter.
- * halfW/halfH — полуразмеры прямоугольника; pad — отступ от края. */
 export function edgePointRayIntersect(
   rectCenter: Point,
   targetCenter: Point,

@@ -1,7 +1,6 @@
 /**
- * canvas/types/index.ts
- * Общие типы UI-слоя канваса.
- * Здесь ничего «умного» — просто типы, чтобы разгрузить EditorCanvas.tsx.
+ canvas/types/index.ts
+ Общие типы UI-слоя канваса.
  */
 export type RelationKind = "one-to-one" | "one-to-many" | "many-to-many";
 

@@ -55,7 +55,6 @@ const typeOptions = [
   "DECIMAL(10,2)",
 ];
 
-/** Строгий ASCII: только [A-Za-z0-9_-], без пробелов */
 function allowIdentASCII(input: string, max: number) {
   return (input ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, max);
 }
@@ -391,7 +390,7 @@ function EntitiesLayerImpl(props: EntitiesLayerProps) {
         );
       })}
 
-      {/* Модалка подтверждения удаления сущности (глобально для слоя) */}
+      {/* Модалка подтверждения удаления сущности */}
       {confirmEntity && (
         <ConfirmModal
           open={true}

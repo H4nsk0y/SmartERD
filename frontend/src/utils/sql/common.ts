@@ -1,7 +1,6 @@
-// frontend/src/utils/sql/common.ts
 import type { Entity } from "../../store/useERStore";
 
-/** Строгий ASCII-санитайзер: только [A-Za-z0-9_], подчищаем подчёркивания по краям */
+/* Строгий ASCII-санитайзер */
 export function sanitize(name: string): string {
   return (name || "")
     .replace(/[^A-Za-z0-9_]/g, "_")
@@ -30,10 +29,10 @@ export function toSingular(name: string): string {
   return name;
 }
 
-/** Имя FK-колонки: не дублируем корень, если PK уже начинается с root_ */
+/*Имя FK-колонки*/
 export function fkColNameFor(rootSingular: string, pkName: string) {
-  const base = snake(pkName);             // напр. "product_id"
-  const root = snake(rootSingular) + "_"; // "product_"
+  const base = snake(pkName);          
+  const root = snake(rootSingular) + "_"; 
   return base.startsWith(root) ? base : `${snake(rootSingular)}_${base}`;
 }
 
@@ -81,6 +80,14 @@ export function findExistingLinkEntity(a: Entity, b: Entity, all: Entity[]): Ent
 export function getPrimaryKey(entity: Entity) {
   const explicit = entity.attributes.find((a) => (a as any).isPrimaryKey);
   if (explicit) return { name: sanitize(explicit.name), type: explicit.type || "UUID" };
-  // ВАЖНО: дефолтный тип PK меняем на UUID (раньше был INT)
+  // дефолтный тип PK — UUID
   return { name: "id", type: "UUID" };
+}
+
+/*Кавычки для идентификаторов*/
+export function qPg(name: string) {
+  return `"${sanitize(name)}"`;
+}
+export function qMy(name: string) {
+  return `\`${sanitize(name)}\``;
 }

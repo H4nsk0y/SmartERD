@@ -13,9 +13,6 @@ export const clamp = (v: number, min: number, max: number) =>
  * - оставляем только [A-Za-z0-9_]
  * - убираем подчёркивания по краям
  * - если начинается с цифры — добавляем '_' в начало
- *
- * ⚠️ Для пользовательского ввода мы теперь используем "мягкий" фильтр
- * в компонентах/сторе. Эта функция оставлена для обратной совместимости.
  */
 export function sanitizeIdentifierInput(raw: string) {
   let s = (raw ?? "").replace(/[^A-Za-z0-9_]/g, "");
@@ -24,7 +21,7 @@ export function sanitizeIdentifierInput(raw: string) {
   return s;
 }
 
-/** Наивное приведение к единственному числу (users -> user) */
+/* Приведение к единственному числу (users -> user) */
 export function toSingular(n: string) {
   const s = (n ?? "").toLowerCase();
   if (s.endsWith("ies")) return n.slice(0, -3) + "y";
@@ -45,11 +42,10 @@ export function snake(name: string): string {
 }
 
 /* ====== Ограничения имён и уникализация ====== */
-/** Выровняли с хранилищем: 64 символа */
 export const ENTITY_NAME_MAX = 64;
 export const ATTR_NAME_MAX   = 64;
 
-/** Делает имя уникальным в рамках множества used (без учёта регистра) */
+/** Делает имя уникальным в рамках множества used */
 export function makeUnique(base: string, used: Set<string>) {
   const low = base.toLowerCase();
   if (!used.has(low)) return base;

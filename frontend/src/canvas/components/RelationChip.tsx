@@ -1,7 +1,6 @@
 // frontend/src/canvas/components/RelationChip.tsx
 /**
- * RelationChip — компактный чип выбора типа связи с мини-меню (UI + коллбеки).
- * Клик по чипу открывает/закрывает меню (не открывает инспектор).
+ * RelationChip — компактный чип выбора типа связи с мини-меню.
  */
 import React from "react";
 
@@ -10,8 +9,8 @@ export type RelationKind = "one-to-one" | "one-to-many" | "many-to-many";
 export type RelationChipProps = {
   kind: RelationKind;
   open: boolean;
-  onToggle: () => void;          // открыть/закрыть меню
-  onPick: (next: RelationKind) => void; // выбрать тип
+  onToggle: () => void;          
+  onPick: (next: RelationKind) => void; 
 };
 
 function kindToLabel(kind: RelationKind): string {
@@ -31,7 +30,6 @@ export default function RelationChip({ kind, open, onToggle, onPick }: RelationC
         backdropFilter: "blur(2px)",
       }}
       onClick={(e) => {
-        // важно: не даём событию долететь до хит-пути линии
         e.stopPropagation();
         onToggle();
       }}
@@ -47,7 +45,7 @@ export default function RelationChip({ kind, open, onToggle, onPick }: RelationC
             border: "1px solid rgba(99,102,241,0.6)",
             backdropFilter: "blur(2px)",
           }}
-          onClick={(e) => e.stopPropagation()} // чтобы меню само не делегировало клик на линию
+          onClick={(e) => e.stopPropagation()} 
         >
           <div className="px-2 py-1 hover:bg-indigo-600/30 cursor-pointer" onClick={() => onPick("one-to-one")}>
             1:1

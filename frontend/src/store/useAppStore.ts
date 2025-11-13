@@ -35,7 +35,7 @@ const defaults: Pick<
 > = {
   language: 'ru',
   theme: 'light',
-  compactToolbar: true,       // по умолчанию компактный тулбар включён
+  compactToolbar: true,       
   defaultShowSqlPanel: true,
   defaultShowMinimap: true,
   confirmDelete: true,
@@ -60,7 +60,6 @@ export const useAppStore = create<AppState>()(
       name: 'app-settings',
       version: 1,
       storage: createJSONStorage(() => localStorage),
-      // при изменениях схемы можно добавлять migrate
     }
   )
 );

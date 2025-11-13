@@ -14,7 +14,7 @@ export async function aiChat(messages: ChatMessage[]): Promise<string> {
   return j.reply as string;
 }
 
-// НОВОЕ: генерация ER
+// генерация ER
 export async function aiGenerateER(description: string) {
   const r = await fetch(`${API}/api/ai/er/generate`, {
     method: 'POST',

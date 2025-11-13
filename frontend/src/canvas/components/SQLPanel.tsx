@@ -23,9 +23,8 @@ export default function SQLPanel({
   onChangeDialect,
   onCopyAll,
   className = "",
-  // новые необязательные пропсы — для обратной совместимости можно не передавать
   editable = true,
-  onChangeSql, // если не передан — просто локально редактируем без поднятия наверх
+  onChangeSql,
 }: {
   sql: string;
   dialect: SqlDialect;
@@ -39,7 +38,7 @@ export default function SQLPanel({
   const [copied, setCopied] = useState(false);
   const [value, setValue] = useState<string>(sql ?? "");
 
-  // синхронизация входного sql -> редактор
+
   useEffect(() => {
     setValue(sql ?? "");
   }, [sql]);
@@ -50,10 +49,8 @@ export default function SQLPanel({
     return () => clearTimeout(t);
   }, [copied]);
 
-  // тёмная тема: читаем класс на <html>
   const isDark = useIsDarkMode();
 
-  // маппинг диалекта на CodeMirror
   const cmDialect: CmSqlDialect = useMemo(() => {
     switch (dialect) {
       case "postgres":
@@ -79,10 +76,9 @@ export default function SQLPanel({
   const handleCopy = async () => {
     try {
       await navigator.clipboard?.writeText(value);
-      onCopyAll?.(); // для обратной совместимости — дергаем старый колбэк тоже
+      onCopyAll?.(); 
       setCopied(true);
     } catch {
-      // ignore
     }
   };
 
@@ -94,9 +90,7 @@ export default function SQLPanel({
       ].join(" ")}
       style={{ width: 420, minWidth: 360, maxWidth: 520 }}
     >
-      {/* Шапка панели (фиксированная) */}
       <div className="shrink-0 p-3 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">
-        {/* Диалект */}
         <div className="relative">
           <button
             onClick={() => setOpen((v) => !v)}
@@ -125,8 +119,6 @@ export default function SQLPanel({
             </div>
           )}
         </div>
-
-        {/* Скопировать */}
         <button
           onClick={handleCopy}
           className="ml-auto px-3 py-1.5 rounded-md text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
@@ -135,8 +127,6 @@ export default function SQLPanel({
           {copied ? "Скопировано ✓" : "Скопировать"}
         </button>
       </div>
-
-      {/* Редактор: прокручивается только он */}
       <div className="h-0 flex-1 min-h-0 overflow-hidden">
         <CodeMirror
           value={value}
