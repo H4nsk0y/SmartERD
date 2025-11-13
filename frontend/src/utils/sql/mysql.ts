@@ -1,6 +1,6 @@
 import type { Entity, Relationship, FKMeta, LinkMeta } from "../../store/useERStore";
 import {
-  sanitize, snake, toSingular, fkColNameFor,
+  sanitize, snake, toSingular, fkColNameFor, qMy,
   hasColumn, findExistingFKColumn, findExistingLinkEntity, getPrimaryKey
 } from "./common";
 
@@ -9,15 +9,14 @@ function mapTypeToMySQL(t: string): string {
   const raw = (t || "").trim();
   const u = raw.replace(/\s+/g, "").toUpperCase();
 
-  if (u === "SERIAL") return "INT AUTO_INCREMENT"; // на всякий случай
-  if (u.startsWith("UUID")) return "CHAR(36)";      // простой вариант хранения UUID (или можно BINARY(16))
-  if (u === "TIMESTAMP") return "DATETIME";         // упростим: DATETIME чаще без сюрпризов
-  // остальное оставляем как есть: INT, BIGINT, VARCHAR(...), TEXT, BOOLEAN, DATE, FLOAT, DECIMAL(…)
-  return raw;
+  if (u === "SERIAL") return "INT AUTO_INCREMENT";
+  if (u.startsWith("UUID")) return "CHAR(36)";      
+  if (u === "TIMESTAMP") return "DATETIME";      
+  return raw; 
 }
 
 function idxName(table: string, col: string) {
-  return `idx_${snake(table)}_${snake(col)}`.slice(0, 63); // ограничим до 64 символов
+  return `idx_${snake(table)}_${snake(col)}`.slice(0, 63);
 }
 
 export function generateMySQLSQL(entities: Entity[], relationships: Relationship[]): string {
@@ -56,9 +55,7 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
     linkEntityByPair.set(key, link);
   }
 
-  const deferredLinkTables = new Set<string>(); // имена (sanitize)
-
-  // Множество сущностей, участвующих в связях
+  const deferredLinkTables = new Set<string>(); 
   const involved = new Set<string>();
   for (const r of relationships) {
     if (entById.has(r.from)) involved.add(r.from);
@@ -69,13 +66,10 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
   for (const e of entities) {
     const isExplicitLink = linkEntityIds.has(e.id);
     const tableName = sanitize(e.name);
+    const T = qMy(tableName);
 
-    // пустая и не участвует — пропускаем (не создаём «висящую» пустышку)
-    if (e.attributes.length === 0 && !involved.has(e.id) && !isExplicitLink) {
-      continue;
-    }
+    if (e.attributes.length === 0 && !involved.has(e.id) && !isExplicitLink) continue;
 
-    // явная линк-таблица без колонок — отложим
     if (isExplicitLink && e.attributes.length === 0) {
       deferredLinkTables.add(tableName);
       continue;
@@ -85,17 +79,17 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
     for (const a of e.attributes) {
       const col = sanitize(a.name);
       const isPk = (a as any).isPrimaryKey;
+      const C = qMy(col);
       const colType = mapTypeToMySQL(a.type);
-      // В MySQL лишний NOT NULL при PRIMARY KEY тоже не нужен
-      cols.push(`${col} ${colType}${isPk ? " PRIMARY KEY" : ""}`);
+      cols.push(`${C} ${colType}${isPk ? " PRIMARY KEY" : ""}`);
     }
 
     const hasPK = e.attributes.some((a) => (a as any).isPrimaryKey);
     if (!isExplicitLink && !hasPK) {
-      cols.unshift(`id INT AUTO_INCREMENT PRIMARY KEY`);
+      cols.unshift(`${qMy("id")} CHAR(36) PRIMARY KEY`);
     }
 
-    sqlParts.push(`CREATE TABLE ${tableName} (\n  ${cols.join(",\n  ")}\n) ENGINE=InnoDB;`);
+    sqlParts.push(`CREATE TABLE ${T} (\n  ${cols.join(",\n  ")}\n) ENGINE=InnoDB;`);
   }
 
   /* ==== 2) RELATIONSHIPS ==== */
@@ -106,6 +100,9 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
 
     const fromName = sanitize(from.name);
     const toName = sanitize(to.name);
+    const F = qMy(fromName);
+    const T = qMy(toName);
+
     const fromPK = getPrimaryKey(from);
     const toPK   = getPrimaryKey(to);
 
@@ -129,18 +126,19 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
         const computedName = fkColNameFor(fromSing, fromPKName);
         const suggestedExisting = findExistingFKColumn(to, fromName, fromSing, fromPKName);
         const requestedName = fkMeta.column ?? suggestedExisting ?? computedName;
+
         const fkCol  = sanitize(requestedName);
+        const fkColQ = qMy(fkCol);
         const fkType = mapTypeToMySQL(fkMeta.type ?? fromPK.type);
 
         const existsExact = hasColumn(to, fkCol);
         if (existsExact) {
           if (fkMeta.notNull !== false) {
-            // В MySQL нет ALTER COLUMN ... SET NOT NULL — нужно MODIFY с типом
-            sqlParts.push(`ALTER TABLE ${toName}\n  MODIFY ${fkCol} ${fkType} NOT NULL;`);
+            sqlParts.push(`ALTER TABLE ${T}\n  MODIFY ${fkColQ} ${fkType} NOT NULL;`);
           }
         } else {
           sqlParts.push(
-            `ALTER TABLE ${toName}\n  ADD ${fkCol} ${fkType}${fkMeta.notNull === false ? "" : " NOT NULL"};`
+            `ALTER TABLE ${T}\n  ADD ${fkColQ} ${fkType}${fkMeta.notNull === false ? "" : " NOT NULL"};`
           );
         }
 
@@ -149,17 +147,20 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
           fkMeta.onUpdate ? ` ON UPDATE ${fkMeta.onUpdate}` : "",
         ].join("");
 
+        const fkName = `fk_${fromName}_${toName}`.slice(0, 63);
         sqlParts.push(
-          `ALTER TABLE ${toName}\n  ADD CONSTRAINT fk_${toName}_${fromName} FOREIGN KEY (${fkCol}) REFERENCES ${fromName}(${fromPKName})${actions};`
+          `ALTER TABLE ${T}\n  ADD CONSTRAINT ${qMy(fkName)} FOREIGN KEY (${fkColQ}) REFERENCES ${F}(${qMy(fromPKName)})${actions};`
         );
 
         const wantUnique = fkMeta.unique === undefined ? (r.type === "one-to-one") : fkMeta.unique === true;
 
         if (fkMeta.index !== false && !wantUnique) {
-          sqlParts.push(`CREATE INDEX ${idxName(toName, fkCol)} ON ${toName}(${fkCol});`);
+          const ix = idxName(toName, fkCol);
+          sqlParts.push(`CREATE INDEX ${qMy(ix)} ON ${T}(${fkColQ});`);
         }
         if (wantUnique) {
-          sqlParts.push(`ALTER TABLE ${toName}\n  ADD CONSTRAINT uq_${toName}_${fkCol} UNIQUE (${fkCol});`);
+          const uqName = `uq_${toName}_${fkCol}`.slice(0, 63);
+          sqlParts.push(`ALTER TABLE ${T}\n  ADD CONSTRAINT ${qMy(uqName)} UNIQUE (${fkColQ});`);
         }
         break;
       }
@@ -179,9 +180,13 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
         const leftCol  = sanitize(linkMeta.leftColumn  ?? fkColNameFor(fromSing, fromPKName));
         const rightCol = sanitize(linkMeta.rightColumn ?? fkColNameFor(toSing,   toPKName));
 
+        const leftQ  = qMy(leftCol);
+        const rightQ = qMy(rightCol);
+
         const autoName    = `${snake(fromName)}_${snake(toName)}_link`;
         const rawLinkName = linkMeta.tableName ?? (explicitEntity ? explicitEntity.name : autoName);
         const linkName    = sanitize(rawLinkName);
+        const L = qMy(linkName);
 
         const actions = [
           linkMeta.onDelete ? ` ON DELETE ${linkMeta.onDelete}` : "",
@@ -191,68 +196,69 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
         const wasDeferred   = deferredLinkTables.has(linkName);
         const explicitHasPK = explicitEntity?.attributes?.some((a) => (a as any).isPrimaryKey) ?? false;
 
+        const fkLName = `fk_${linkName}_${fromName}`.slice(0, 63);
+        const fkRName = `fk_${linkName}_${toName}`.slice(0, 63);
+
         if (explicitEntity) {
           if (wasDeferred) {
             sqlParts.push(
-              `CREATE TABLE ${linkName} (\n` +
-              `  ${leftCol} ${mapTypeToMySQL(fromPK.type)} NOT NULL,\n` +
-              `  ${rightCol} ${mapTypeToMySQL(toPK.type)} NOT NULL,\n` +
+              `CREATE TABLE ${L} (\n` +
+              `  ${leftQ} ${mapTypeToMySQL(fromPK.type)} NOT NULL,\n` +
+              `  ${rightQ} ${mapTypeToMySQL(toPK.type)} NOT NULL,\n` +
               (linkMeta.compositePrimaryKey === false || explicitHasPK
                 ? ""
-                : `  PRIMARY KEY (${leftCol}, ${rightCol}),\n`) +
-              `  CONSTRAINT fk_${linkName}_${fromName} FOREIGN KEY (${leftCol}) REFERENCES ${fromName}(${fromPKName})${actions},\n` +
-              `  CONSTRAINT fk_${linkName}_${toName} FOREIGN KEY (${rightCol}) REFERENCES ${toName}(${toPKName})${actions}\n` +
+                : `  PRIMARY KEY (${leftQ}, ${rightQ}),\n`) +
+              `  CONSTRAINT ${qMy(fkLName)} FOREIGN KEY (${leftQ}) REFERENCES ${F}(${qMy(fromPKName)})${actions},\n` +
+              `  CONSTRAINT ${qMy(fkRName)} FOREIGN KEY (${rightQ}) REFERENCES ${T}(${qMy(toPKName)})${actions}\n` +
               `) ENGINE=InnoDB;`
             );
             if (linkMeta.index !== false) {
-              sqlParts.push(`CREATE INDEX ${idxName(linkName, leftCol)} ON ${linkName}(${leftCol});`);
-              sqlParts.push(`CREATE INDEX ${idxName(linkName, rightCol)} ON ${linkName}(${rightCol});`);
+              sqlParts.push(`CREATE INDEX ${qMy(idxName(linkName, leftCol))} ON ${L}(${leftQ});`);
+              sqlParts.push(`CREATE INDEX ${qMy(idxName(linkName, rightCol))} ON ${L}(${rightQ});`);
             }
           } else {
-            // уже создана (были колонки) — доводим через ALTER
             if (!hasColumn(explicitEntity, leftCol)) {
-              sqlParts.push(`ALTER TABLE ${linkName}\n  ADD ${leftCol} ${mapTypeToMySQL(fromPK.type)} NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  ADD ${leftQ} ${mapTypeToMySQL(fromPK.type)} NOT NULL;`);
             } else {
-              sqlParts.push(`ALTER TABLE ${linkName}\n  MODIFY ${leftCol} ${mapTypeToMySQL(fromPK.type)} NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  MODIFY ${leftQ} ${mapTypeToMySQL(fromPK.type)} NOT NULL;`);
             }
             if (!hasColumn(explicitEntity, rightCol)) {
-              sqlParts.push(`ALTER TABLE ${linkName}\n  ADD ${rightCol} ${mapTypeToMySQL(toPK.type)} NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  ADD ${rightQ} ${mapTypeToMySQL(toPK.type)} NOT NULL;`);
             } else {
-              sqlParts.push(`ALTER TABLE ${linkName}\n  MODIFY ${rightCol} ${mapTypeToMySQL(toPK.type)} NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  MODIFY ${rightQ} ${mapTypeToMySQL(toPK.type)} NOT NULL;`);
             }
 
             if (linkMeta.compositePrimaryKey !== false && !explicitHasPK) {
-              sqlParts.push(`ALTER TABLE ${linkName}\n  ADD PRIMARY KEY (${leftCol}, ${rightCol});`);
+              sqlParts.push(`ALTER TABLE ${L}\n  ADD PRIMARY KEY (${leftQ}, ${rightQ});`);
             }
 
             sqlParts.push(
-              `ALTER TABLE ${linkName}\n  ADD CONSTRAINT fk_${linkName}_${fromName} FOREIGN KEY (${leftCol}) REFERENCES ${fromName}(${fromPKName})${actions};`
+              `ALTER TABLE ${L}\n  ADD CONSTRAINT ${qMy(fkLName)} FOREIGN KEY (${leftQ}) REFERENCES ${F}(${qMy(fromPKName)})${actions};`
             );
             sqlParts.push(
-              `ALTER TABLE ${linkName}\n  ADD CONSTRAINT fk_${linkName}_${toName} FOREIGN KEY (${rightCol}) REFERENCES ${toName}(${toPKName})${actions};`
+              `ALTER TABLE ${L}\n  ADD CONSTRAINT ${qMy(fkRName)} FOREIGN KEY (${rightQ}) REFERENCES ${T}(${qMy(toPKName)})${actions};`
             );
 
             if (linkMeta.index !== false) {
-              sqlParts.push(`CREATE INDEX ${idxName(linkName, leftCol)} ON ${linkName}(${leftCol});`);
-              sqlParts.push(`CREATE INDEX ${idxName(linkName, rightCol)} ON ${linkName}(${rightCol});`);
+              sqlParts.push(`CREATE INDEX ${qMy(idxName(linkName, leftCol))} ON ${L}(${leftQ});`);
+              sqlParts.push(`CREATE INDEX ${qMy(idxName(linkName, rightCol))} ON ${L}(${rightQ});`);
             }
           }
         } else {
-          // неявная линк-таблица
           sqlParts.push(
-            `CREATE TABLE ${linkName} (\n` +
-            `  ${leftCol} ${mapTypeToMySQL(fromPK.type)} NOT NULL,\n` +
-            `  ${rightCol} ${mapTypeToMySQL(toPK.type)} NOT NULL,\n` +
+            `CREATE TABLE ${L} (\n` +
+            `  ${leftQ} ${mapTypeToMySQL(fromPK.type)} NOT NULL,\n` +
+            `  ${rightQ} ${mapTypeToMySQL(toPK.type)} NOT NULL,\n` +
             (linkMeta.compositePrimaryKey === false
               ? ""
-              : `  PRIMARY KEY (${leftCol}, ${rightCol}),\n`) +
-            `  CONSTRAINT fk_${linkName}_${fromName} FOREIGN KEY (${leftCol}) REFERENCES ${fromName}(${fromPKName})${actions},\n` +
-            `  CONSTRAINT fk_${linkName}_${toName} FOREIGN KEY (${rightCol}) REFERENCES ${toName}(${toPKName})${actions}\n` +
+              : `  PRIMARY KEY (${leftQ}, ${rightQ}),\n`) +
+            `  CONSTRAINT ${qMy(fkLName)} FOREIGN KEY (${leftQ}) REFERENCES ${F}(${qMy(fromPKName)})${actions},\n` +
+            `  CONSTRAINT ${qMy(fkRName)} FOREIGN KEY (${rightQ}) REFERENCES ${T}(${qMy(toPKName)})${actions}\n` +
             `) ENGINE=InnoDB;`
           );
           if (linkMeta.index !== false) {
-            sqlParts.push(`CREATE INDEX ${idxName(linkName, leftCol)} ON ${linkName}(${leftCol});`);
-            sqlParts.push(`CREATE INDEX ${idxName(linkName, rightCol)} ON ${linkName}(${rightCol});`);
+            sqlParts.push(`CREATE INDEX ${qMy(idxName(linkName, leftCol))} ON ${L}(${leftQ});`);
+            sqlParts.push(`CREATE INDEX ${qMy(idxName(linkName, rightCol))} ON ${L}(${rightQ});`);
           }
         }
         break;

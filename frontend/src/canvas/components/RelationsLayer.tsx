@@ -1,10 +1,7 @@
 // src/canvas/components/RelationsLayer.tsx
 /**
- * RelationsLayer — стабильный hover/клик без «турбо-мигания».
- * - Видимая линия: pointer-events: none (только отрисовка)
- * - Хит-путь: прозрачный stroke шире и длиннее линии, накрывает маркер
- * - Липкий hover с небольшим дебаунсом (120ms), чтобы не мигал
- */
+ * RelationsLayer — стабильный hover.
+*/
 
 import React from "react";
 import type { RelationKind, Size } from "../types";
@@ -33,21 +30,21 @@ export default function RelationsLayer({
   onSelect: (id: string) => void;
   onChangeType?: (id: string, next: RelationKind) => void;
 }) {
-  // карта сущностей
+  
   const byId = React.useMemo(() => {
     const m = new Map<string, Ent>();
     for (const e of entities) m.set(e.id, e);
     return m;
   }, [entities]);
 
-  // ---- липкий hover (debounce на уход) ----
+  
   const sticky = React.useRef<Record<string, number>>({});
   const [, force] = React.useState(0);
   const now = () => performance.now();
 
   const setSticky = (id: string) => {
-    sticky.current[id] = now() + 140; // держим 140мс после leave
-    force((x) => x ^ 1); // мелкий тик
+    sticky.current[id] = now() + 140; 
+    force((x) => x ^ 1); 
   };
   const clearExpired = () => {
     const t = now();
@@ -77,7 +74,6 @@ export default function RelationsLayer({
       style={{ overflow: "visible", pointerEvents: "none" }}
       shapeRendering="geometricPrecision"
     >
-      {/* локальные стили для анимации */}
       <style>{`
         @keyframes erd-flow { to { stroke-dashoffset: -180; } }
         .erd-anim { stroke-dasharray: 12 8; stroke-dashoffset: 0; animation: erd-flow 1.6s linear infinite; }
@@ -111,7 +107,6 @@ export default function RelationsLayer({
         const p1 = edgePointRayIntersect(fromC, toC, fw / 2, fh / 2, 8);
         const p2 = edgePointRayIntersect(toC, fromC, tw / 2, th / 2, 8);
 
-        // удлинённый конец для hit-пути (накрывает маркер)
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
         const L = Math.hypot(dx, dy) || 1;
@@ -135,7 +130,6 @@ export default function RelationsLayer({
 
         return (
           <g key={r.id} style={{ pointerEvents: "none" }}>
-            {/* Видимая линия — только отрисовка */}
             <path
               d={d}
               fill="none"
@@ -148,7 +142,6 @@ export default function RelationsLayer({
               pointerEvents="none"
             />
 
-            {/* Расширенный хит-путь — ловит и «над маркером» */}
             <path
               d={dHit}
               fill="none"
@@ -162,7 +155,6 @@ export default function RelationsLayer({
                 onHover(r.id);
               }}
               onMouseLeave={() => {
-                // не снимаем мгновенно — держим 140мс
                 setSticky(r.id);
                 onHover(null);
               }}
@@ -172,7 +164,6 @@ export default function RelationsLayer({
               }}
             />
 
-            {/* Чип типа связи — не открывает инспектор */}
             <foreignObject
               x={midX - 20}
               y={midY - 28}
@@ -196,7 +187,6 @@ export default function RelationsLayer({
                   {r.type === "one-to-one" ? "1:1" : r.type === "one-to-many" ? "1:N" : "N:M"}
                 </span>
 
-                {/* Простой список типов по требованию */}
                 {onChangeType && (
                   <div
                     className="absolute top-6 left-1/2 -translate-x-1/2 rounded text-xs w-24"

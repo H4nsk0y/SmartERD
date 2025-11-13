@@ -11,7 +11,6 @@ type Props = {
 };
 
 export default function ValidationHints({ issues, open, onToggle, onJump, className = "" }: Props) {
-  // Счётчики
   const counts = React.useMemo(() => {
     let err = 0, warn = 0, info = 0;
     for (const i of issues) {
@@ -22,7 +21,6 @@ export default function ValidationHints({ issues, open, onToggle, onJump, classN
     return { err, warn, info, total: issues.length };
   }, [issues]);
 
-  // Сортировка: error -> warning -> info
   const sortedIssues = React.useMemo(() => {
     const order: Record<ValidationIssue["level"], number> = {
       error: 0,
@@ -37,15 +35,12 @@ export default function ValidationHints({ issues, open, onToggle, onJump, classN
       className={`max-w-sm w-[360px] rounded-xl border bg-white/95 dark:bg-gray-900/95 backdrop-blur shadow-lg
       border-gray-200 dark:border-gray-700 ${className}`}
     >
-      {/* Header */}
       <button
         onClick={onToggle}
         className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors rounded-t-xl"
         title={open ? "Свернуть подсказки" : "Развернуть подсказки"}
       >
         <span className="font-medium text-gray-900 dark:text-gray-100">Проблемы модели</span>
-
-        {/* Единая ширина ячеек с бейджами */}
         <div className="ml-auto grid grid-cols-3 gap-2 text-xs min-w-[240px]">
           <Badge tone="red"   label="ошибки"   value={counts.err} />
           <Badge tone="amber" label="предупр." value={counts.warn} />
@@ -54,8 +49,6 @@ export default function ValidationHints({ issues, open, onToggle, onJump, classN
 
         <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">{open ? "▾" : "▸"}</span>
       </button>
-
-      {/* List */}
       {open && (
         <div className="max-h-64 overflow-auto divide-y divide-gray-200 dark:divide-gray-800">
           {sortedIssues.length === 0 ? (
@@ -102,8 +95,6 @@ function Badge({ tone, label, value }: { tone: "red" | "amber" | "blue"; label: 
       : tone === "amber"
       ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
       : "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300";
-
-  // w-full — растягиваемся на всю ширину ячейки грида -> одинаковые размеры
   return (
     <span className={`inline-flex items-center justify-center gap-1 w-full px-2 py-0.5 rounded-full ${toneCls}`}>
       <span>{label}:</span>

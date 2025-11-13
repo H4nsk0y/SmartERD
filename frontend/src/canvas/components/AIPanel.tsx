@@ -51,7 +51,7 @@ export default function AIPanel({ className = "" }: { className?: string }) {
       className={[
         "w-[420px] min-w-[360px] max-w-[520px] border-l border-gray-300 dark:border-gray-700",
         "bg-white dark:bg-gray-900",
-        "flex flex-col min-h-0", // важно: без скролла у панели, только у контента
+        "flex flex-col min-h-0", 
         className,
       ].join(" ")}
     >
@@ -99,7 +99,6 @@ export default function AIPanel({ className = "" }: { className?: string }) {
                 onClick={() => { setChatIn(""); setChatOut(""); setChatErr(null); }}
                 className={[
                   "h-9 px-3 rounded-lg text-sm font-medium",
-                  // светлая/тёмная тема — видно всегда
                   "border border-gray-300 dark:border-gray-700",
                   "bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100"
                 ].join(" ")}
@@ -175,7 +174,6 @@ export default function AIPanel({ className = "" }: { className?: string }) {
 }
 
 function GifLoader() {
-  // грузим из public: /loader.gif
   return <img src="/loader.gif" alt="" className="h-4 w-4" />;
 }
 

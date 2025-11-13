@@ -1,6 +1,4 @@
-/**
- * Minimap — маленькая карта сцены. Без внешней логики.
- */
+/*Minimap — маленькая карта. */
 import { clamp } from "../utils";
 
 type Dot = { id: string; x: number; y: number };
@@ -66,7 +64,7 @@ export default function Minimap({
         />
       </div>
       <div className="mt-2 text-[11px] text-gray-600 dark:text-gray-300">
-        Навигация: колесо; Fit; 1:1; Пан: ПКМ/MMB или Ctrl/Meta+ЛКМ
+        Навигация: колесо; Fit; Пан: ПКМ/MMB
       </div>
     </div>
   );

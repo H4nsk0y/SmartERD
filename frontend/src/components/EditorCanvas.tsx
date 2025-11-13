@@ -113,7 +113,7 @@ export default function EditorCanvas() {
   const [dialect, setDialect] = useState<SqlDialect>("postgres");
 
   const normalizeDialect = (d: PanelDialect): SqlDialect => {
-    // generateSQL поддерживает postgres|mysql; остальные маппим в postgres.
+    // generateSQL поддерживает postgres|mysql; остальные пока что маппим в postgres.
     if (d === "postgres" || d === "mysql") return d;
     return "postgres";
   };
@@ -122,7 +122,6 @@ export default function EditorCanvas() {
     if (!sqlOut) return;
     const sql = generateSQL(entities, relationships, { dialect });
     setSqlOut(sql);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialect]);
 
   // локальный ввод атрибутов
@@ -208,7 +207,7 @@ export default function EditorCanvas() {
     }
   };
 
-  // размеры карточек -> мировые
+  // размеры карточек 
   useEffect(() => {
     const observers: Record<string, ResizeObserver> = {};
     entities.forEach((e) => {
@@ -241,7 +240,7 @@ export default function EditorCanvas() {
     return () => el.removeEventListener("wheel", onWheel as EventListener);
   }, [camera]);
 
-  // блок iOS pinch
+  
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
@@ -275,7 +274,7 @@ export default function EditorCanvas() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isAddingEntity, inspectorOpen]);
 
-  // Delete/Backspace — удаление связи (с подтверждением по настройке)
+  // Delete/Backspace — удаление связи (с подтверждением, если выбрано в настройке)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (inspectorOpen) return;
@@ -300,7 +299,7 @@ export default function EditorCanvas() {
   useEffect(() => { setShowMinimap(defaultShowMinimap); }, [defaultShowMinimap]);
   useEffect(() => { setShowSqlPanel(defaultShowSqlPanel); }, [defaultShowSqlPanel]);
 
-  // Undo/Redo
+  // Undo/Redo - пока не работает
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const z = e.key.toLowerCase() === "z";
@@ -424,7 +423,6 @@ export default function EditorCanvas() {
     if (inspectorOpen && selectedRel) {
       initFormsFromSelected();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inspectorOpen, selectedRel?.id, selectedRel?.type]);
 
   // viewport для миникарты
@@ -474,8 +472,6 @@ export default function EditorCanvas() {
         if (raw.entities?.length || raw.relationships?.length) {
           const data = normalizeDiagramPositions(raw, 40);
           setDiagramData(data.entities || [], data.relationships || []);
-
-          // После установки — вписать в экран
           setTimeout(() => {
             const boxes = (data.entities || []).map((en: any) => ({
               x: en.x, y: en.y, w: 224, h: 80,
@@ -529,7 +525,7 @@ export default function EditorCanvas() {
   };
   const handleReset1x = () => camera.reset1x();
 
-  // Очистить всё (с учётом настройки confirmDelete)
+  // Очистить всё
   const handleClearAll = () => {
     if (confirmDelete) {
       setConfirmClearOpen(true);
@@ -540,7 +536,7 @@ export default function EditorCanvas() {
     }
   };
 
-  // --- Нативный стоп колеса на обёртке подсказок ---
+  
   const hintsWrapRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = hintsWrapRef.current;

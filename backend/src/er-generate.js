@@ -6,9 +6,7 @@
 //    перевёрнутые пары вроде Payment–Refund, User–Enrollment, конфликт 1:N и M:M и т.д.).
 // 4) specToAppFormat(spec) — превращаем спецификацию в формат фронта (entities/relationships) + авто-раскладка.
 
-//
 // ===================== PROMPT =====================
-//
 export const SYSTEM_PROMPT = `
 Ты — помощник, который по краткому описанию проекта генерирует ER-модель.
 
@@ -42,9 +40,8 @@ export const SYSTEM_PROMPT = `
 - Никаких пояснений вне JSON.
 `.trim();
 
-//
+
 // ===================== ВСПОМОГАТЕЛЬНОЕ =====================
-//
 function snake(s) {
   return String(s || "")
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
@@ -76,9 +73,8 @@ function pascal(s) {
 function lc(s) { return String(s || "").toLowerCase(); }
 function eq(a, b) { return lc(a) === lc(b); }
 
-//
+
 // ===================== ПАРСИНГ JSON =====================
-//
 export function parseModelJson(text) {
   const raw = String(text || "");
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -95,9 +91,8 @@ export function parseModelJson(text) {
   }
 }
 
-//
+
 // ===================== НОРМАЛИЗАЦИЯ СПЕЦИФИКАЦИИ =====================
-//
 function normalizeSpec(spec) {
   const s = spec && typeof spec === "object" ? spec : {};
   s.entities = Array.isArray(s.entities) ? s.entities : [];
@@ -143,9 +138,8 @@ function normalizeSpec(spec) {
   return s;
 }
 
-//
+
 // ===================== ЭВРИСТИКИ РЕМОНТА =====================
-//
 function buildNameMaps(entities) {
   const byName = new Map(); // оригинальное имя -> entity
   const bySnake = new Map(); // snake(name) -> entity
@@ -474,7 +468,7 @@ function ensureSelfLinkByParentId(spec) {
   }
 }
 
-/** NEW: пометка несвязанных, но непустых сущностей (диагностический хинт; не влияет на SQL) */
+/* пометка несвязанных, но непустых сущностей (диагностический хинт) */
 function markLonelyNonEmptyEntities(spec) {
   const involved = new Set();
   for (const r of spec.relationships) { involved.add(r.from); involved.add(r.to); }
@@ -525,9 +519,8 @@ export function repairSpec(inputSpec) {
   return spec;
 }
 
-//
+
 // ===================== РАЗВОРОТ в формат приложения + АВТО-РАСКЛАДКА =====================
-//
 function ensureAttrIds(attrs) {
   return (attrs || []).map(a => ({
     id: mkId(),
@@ -539,7 +532,6 @@ function ensureAttrIds(attrs) {
   }));
 }
 function autoLayout(entities) {
-  // простая сетка 4 колонки, шаг ~320x220
   const COLS = 4;
   const STEP_X = 320;
   const STEP_Y = 220;

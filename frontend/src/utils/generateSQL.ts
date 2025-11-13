@@ -1,4 +1,3 @@
-// src/utils/generateSQL.ts
 import type { Entity, Relationship } from "../store/useERStore";
 import { generatePostgresSQL } from "./sql/postgres";
 import { generateMySQLSQL }    from "./sql/mysql";
@@ -11,9 +10,11 @@ export function generateSQL(
 ): string {
   const dialect = options.dialect ?? "postgres";
   switch (dialect) {
-    case "mysql":    return generateMySQLSQL(entities, relationships);
+    case "mysql":
+      return (generateMySQLSQL as any)(entities, relationships, options);
     case "postgres":
-    default:         return generatePostgresSQL(entities, relationships);
+    default:
+      return (generatePostgresSQL as any)(entities, relationships, options);
   }
 }
 

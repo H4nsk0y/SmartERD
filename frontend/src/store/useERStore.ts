@@ -102,22 +102,22 @@ interface ERState {
   entities: Entity[];
   relationships: Relationship[];
 
-  // --- сущности ---
+  //сущности 
   addEntity: (name: string, x: number, y: number) => void;
   updateEntityPosition: (id: string, x: number, y: number) => void;
   removeEntity: (id: string) => void;
   renameEntity: (id: string, newName: string) => void;
 
-  // --- атрибуты ---
+  //атрибуты
   addAttribute: (entityId: string, name: string, type: string, isPrimaryKey?: boolean) => void;
   removeAttribute: (entityId: string, attrId: string) => void;
 
-  /** NEW: правки существующих атрибутов */
+  /*правки существующих атрибутов */
   updateAttributeName: (entityId: string, attrId: string, newName: string) => void;
   updateAttributeType: (entityId: string, attrId: string, newType: string) => void;
   setAttributePrimaryKey: (entityId: string, attrId: string, isPrimary: boolean) => void;
 
-  // --- связи ---
+  //связи
   addRelationship: (from: string, to: string, type: Relationship["type"]) => void;
   removeRelationship: (id: string) => void;
   updateRelationshipType: (id: string, type: Relationship["type"]) => void;
@@ -126,15 +126,15 @@ interface ERState {
   setRelationshipFK: (id: string, fk: Partial<FKMeta>) => void;
   setRelationshipLink: (id: string, link: Partial<LinkMeta>) => void;
 
-  // --- взаимодействие с линиями ---
+  //взаимодействие с линиями
   selectedRelationshipId: string | null;
   setSelectedRelationship: (id: string | null) => void;
 
-  // --- импорт / сброс данных ---
+  //импорт / сброс данных
   setDiagramData: (entities: Entity[], relationships: Relationship[]) => void;
   clearAll: () => void;
 
-  // --- история (undo/redo) ---
+  //история (undo/redo) - пока не работает
   undo: () => void;
   redo: () => void;
   _past: Snapshot[];
@@ -237,7 +237,6 @@ export const useERStore = create<ERState>((set, get) => {
       }));
     },
 
-    /** NEW: имя атрибута с уникализацией внутри сущности */
     updateAttributeName: (entityId, attrId, newName) => {
       pushHistory();
       set((s) => ({
@@ -258,8 +257,6 @@ export const useERStore = create<ERState>((set, get) => {
         }),
       }));
     },
-
-    /** NEW: тип атрибута */
     updateAttributeType: (entityId, attrId, newType) => {
       pushHistory();
       set((s) => ({
@@ -275,8 +272,6 @@ export const useERStore = create<ERState>((set, get) => {
         ),
       }));
     },
-
-    /** NEW: установка/снятие PK (если ставим — снимаем у остальных в сущности) */
     setAttributePrimaryKey: (entityId, attrId, isPrimary) => {
       pushHistory();
       set((s) => ({
@@ -350,7 +345,6 @@ export const useERStore = create<ERState>((set, get) => {
     /* ---------- Импорт / Сброс ---------- */
     setDiagramData: (entities, relationships) => {
       pushHistory();
-      // Мягко нормализуем и уникализируем имена при импорте (сохраняя _ и -)
       const result: Entity[] = [];
       for (const e of entities || []) {
         const usedEnt = new Set(result.map((x) => x.name.toLowerCase()));
@@ -382,7 +376,7 @@ export const useERStore = create<ERState>((set, get) => {
       }));
     },
 
-    /* ---------- Undo / Redo ---------- */
+    /* ---------- Undo / Redo ---------- - пока не работает */
     undo: () => {
       const s = get();
       if (s._past.length === 0) return;

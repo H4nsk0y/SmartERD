@@ -31,7 +31,7 @@ export default function ConfirmModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onCancel, onConfirm]);
 
-  // Лочим скролл фона, пока модалка открыта
+  // Пока открыто модальное окно - блокируется скролл 
   React.useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -43,7 +43,7 @@ export default function ConfirmModal({
 
   if (!open) return null;
 
-  // Портал в body, чтобы не влияли transform/overflow родителей
+
   return createPortal(
     <div
       className="fixed inset-0 z-[1000] flex items-center justify-center"

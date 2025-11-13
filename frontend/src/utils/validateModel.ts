@@ -1,4 +1,3 @@
-// frontend/src/utils/validateModel.ts
 import type { Entity, Relationship } from "../store/useERStore";
 import {
   sanitize, snake, toSingular, hasColumn, findExistingFKColumn,
@@ -11,16 +10,16 @@ export type ValidationLevel = "error" | "warning" | "info";
 /** Единица результата проверки */
 export interface ValidationIssue {
   level: ValidationLevel;
-  code: string;               // машинно-читаемый код (например, DUP_ENTITY_NAME)
-  message: string;            // человекочитаемое
-  where?: string[];           // ID сущностей/связей (для навигации)
-  suggestion?: string;        // короткая подсказка: что сделать
+  code: string;              
+  message: string;           
+  where?: string[];           
+  suggestion?: string;        
 }
 
 /** Результат проверки всей модели */
 export interface ValidationResult {
-  ok: boolean;                // нет критических ошибок → true
-  issues: ValidationIssue[];  // список ошибок/предупреждений/инфо
+  ok: boolean;                
+  issues: ValidationIssue[];  
 }
 
 /** Быстрая нормализация типа для сравнения совместимости (INT == int ==  Int ) */
@@ -50,7 +49,10 @@ function looksLikeLinkName(linkName: string, aName: string, bName: string) {
 
 /** Вспомогательные для новых проверок */
 function hasSelfRelation(entityId: string, relationships: Relationship[]) {
-  return relationships.some(r => (r.type === "one-to-many" || r.type === "one-to-one") && r.from === entityId && r.to === entityId);
+  return relationships.some(r =>
+    (r.type === "one-to-many" || r.type === "one-to-one") &&
+    r.from === entityId && r.to === entityId
+  );
 }
 function countIdCols(e: Entity) {
   return e.attributes.filter(a => /_id$/i.test(sanitize(a.name))).map(a => sanitize(a.name));
@@ -59,6 +61,17 @@ function findEntityByRootName(entities: Entity[], rootSnake: string): Entity | n
   const wanted = rootSnake.toLowerCase();
   return entities.find(en => snake(en.name) === wanted) || null;
 }
+
+/** Базовые правила валидных идентификаторов без кавычек */
+const IDENT_OK = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Короткий список зарезервированных слов (пересечение Postgres/MySQL + частые коллизии имён) */
+const RESERVED = new Set([
+  "select","insert","update","delete","table","column","index",
+  "primary","foreign","key","unique","constraint","references","check","where","from","to",
+  "limit","offset","join","left","right","inner","outer","full","and","or","not","as",
+  "values","default"
+]);
 
 /** Главная функция валидации */
 export function validateModel(entities: Entity[], relationships: Relationship[]): ValidationResult {
@@ -87,6 +100,29 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
+  // --- 1a) Резерв/кавычки для имён сущностей ---
+  for (const e of entities) {
+    const raw = e.name;
+    const norm = sanitize(raw);
+    if (!IDENT_OK.test(norm)) {
+      issues.push({
+        level: "warning",
+        code: "IDENT_NEEDS_QUOTING_ENTITY",
+        message: `Имя таблицы «${raw}» требует экранирования (кавычек) в SQL.`,
+        where: [e.id],
+        suggestion: "Переименуйте таблицу в буквенно-цифровое имя с подчёркиванием, чтобы избежать кавычек."
+      });
+    } else if (RESERVED.has(norm.toLowerCase())) {
+      issues.push({
+        level: "warning",
+        code: "RESERVED_WORD_ENTITY",
+        message: `Имя таблицы «${raw}» совпадает с зарезервированным словом SQL.`,
+        where: [e.id],
+        suggestion: "Переименуйте таблицу или оставьте как есть (генератор процитирует имя)."
+      });
+    }
+  }
+
   // --- 2) Повторяющиеся атрибуты в одной сущности ---
   for (const e of entities) {
     const seen = new Map<string, number>();
@@ -103,6 +139,31 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
         where: [e.id],
         suggestion: "Переименуйте дублирующиеся атрибуты.",
       });
+    }
+  }
+
+  // --- 2a) Резерв/кавычки для атрибутов ---
+  for (const e of entities) {
+    for (const a of e.attributes) {
+      const raw = a.name;
+      const norm = sanitize(raw);
+      if (!IDENT_OK.test(norm)) {
+        issues.push({
+          level: "warning",
+          code: "IDENT_NEEDS_QUOTING_COLUMN",
+          message: `Столбец «${e.name}.${raw}» требует экранирования (кавычек) в SQL.`,
+          where: [e.id],
+          suggestion: "Переименуйте столбец под формат [A-Za-z_][A-Za-z0-9_]*."
+        });
+      } else if (RESERVED.has(norm.toLowerCase())) {
+        issues.push({
+          level: "warning",
+          code: "RESERVED_WORD_COLUMN",
+          message: `Столбец «${e.name}.${raw}» совпадает с зарезервированным словом SQL.`,
+          where: [e.id],
+          suggestion: "Переименуйте столбец или оставьте как есть (генератор процитирует имя)."
+        });
+      }
     }
   }
 
@@ -125,7 +186,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     const link = findExistingLinkEntity(p.from, p.to, entities);
     linkEntityByPair.set(p.key, link ?? null);
     if (link && link.attributes.length === 0) {
-      // пустая — будет создана целиком на этапе связей
       deferredLinkTables.add(sanitize(link.name));
       issues.push({
         level: "info",
@@ -147,7 +207,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
 
     if (isEmpty && !isExplicitLink) {
       if (!participates) {
-        // Совсем пустая и никуда не связана — генератор её пропустит
         issues.push({
           level: "warning",
           code: "EMPTY_ENTITY_SKIPPED",
@@ -157,7 +216,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
         });
         continue;
       } else {
-        // Пустая, но участвует в связях — создадим базовую таблицу, дальше ALTER добавит колонки
         issues.push({
           level: "info",
           code: "EMPTY_ENTITY_WITH_RELS",
@@ -183,7 +241,7 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // --- 3a) Несвязанная, но непустая сущность (диагностический ворнинг) ---
+  // --- 3a) Несвязанная, но непустая сущность ---
   for (const e of entities) {
     if (e.attributes.length > 0 && !hasAnyRelations(e.id)) {
       issues.push({
@@ -210,7 +268,7 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // --- 3c) Таблица с двумя *_id без связи M:N (распознаётся как link-кандидат) ---
+  // --- 3c) Таблица с двумя *_id без связи M:N ---
   for (const e of entities) {
     const idCols = countIdCols(e);
     if (idCols.length !== 2) continue;
@@ -272,7 +330,7 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
           });
         }
       } else {
-        // Колонки нет — генератор добавит; это не ошибка.
+        // Колонки нет — генератор добавит;
         const autoCol = sanitize((r.fk?.column) || `${snake(fromSing)}_${snake(fromPK.name)}`);
         issues.push({
           level: "info",
@@ -301,7 +359,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
       const explicit = linkEntityByPair.get(key);
 
       if (!explicit) {
-        // Линк-таблица отсутствует — генератор создаст автоматически <a>_<b>_link
         const autoName = `${snake(fromName)}_${snake(toName)}_link`;
         issues.push({
           level: "info",
@@ -350,7 +407,28 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // --- 5) Псевдо-линк без связи N:M (подозрительная таблица) ---
+  for (const r of relationships) {
+    if (r.from !== r.to) continue;
+    const e = entById.get(r.from);
+    if (!e) continue;
+
+    const pk = getPrimaryKey(e);
+    const fkName =
+      (r.fk?.column && sanitize(r.fk.column)) ||
+      `parent_${snake(pk.name)}`;
+
+    const fkAttr = e.attributes.find(a => sanitize(a.name).toLowerCase() === fkName.toLowerCase());
+    if (fkAttr && fkAttr.type && normType(fkAttr.type) !== normType(pk.type)) {
+      issues.push({
+        level: "error",
+        code: "SELF_FK_TYPE_MISMATCH",
+        message: `Самосвязь ${e.name}↔${e.name}: тип FK «${fkName}» (${fkAttr.type}) не совпадает с типом PK «${pk.name}» (${pk.type}).`,
+        where: [e.id],
+        suggestion: `Выравняйте типы (например, смените тип «${fkName}» на ${pk.type}).`
+      });
+    }
+  }
+
   for (const e of entities) {
     const isPartOfAnyPair = mmPairs.some(p => looksLikeLinkName(e.name, p.from.name, p.to.name));
     if (!isPartOfAnyPair) {

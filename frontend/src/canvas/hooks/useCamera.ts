@@ -1,7 +1,6 @@
 // frontend/src/canvas/hooks/useCamera.ts
 /**
  * Хук камеры: зум, пан, конвертация координат, viewport.
- * Вешать колесо лучше нативно с { passive: false } → onWheelNative.
  */
 
 import * as React from "react";
@@ -68,7 +67,6 @@ export function useCamera(opts: UseCameraOptions = {}) {
     isPanning.current = false;
   }, []);
 
-  /** React-версия: не вызывает preventDefault, чтобы не падать на passive listeners */
   const onWheel = React.useCallback((e: React.WheelEvent, host: HTMLElement | null) => {
     if (!host) return;
     const rect = host.getBoundingClientRect();
@@ -84,10 +82,9 @@ export function useCamera(opts: UseCameraOptions = {}) {
     setScale(sNext); setOffset(offNext);
   }, [minScale, maxScale, toWorld]);
 
-  /** Нативная версия под addEventListener('wheel', ..., {passive:false}) */
   const onWheelNative = React.useCallback((e: WheelEvent, host: HTMLElement | null) => {
     if (!host) return;
-    e.preventDefault(); // безопасно: слушатель будет с passive:false
+    e.preventDefault(); 
     const rect = host.getBoundingClientRect();
     const pre = toWorld(e.clientX, e.clientY, rect);
     const sPrev = scaleRef.current;
@@ -157,7 +154,7 @@ export function useCamera(opts: UseCameraOptions = {}) {
     scaleRef, offsetRef,
     toWorld, getViewportWorldRect, fitAll, reset1x, centerOn,
     onPanStart, onPanMove, onPanEnd,
-    onWheel, onWheelNative, // <- новое
+    onWheel, onWheelNative,
     setScale, setOffset,
   };
 }

@@ -1,15 +1,7 @@
 /**
- * canvas/hooks/useMeasureCards
- * Измеряет DOM-элементы карточек сущностей через ResizeObserver
- * и возвращает их размеры в мировых координатах (делим на текущий scale).
- *
- * Использование:
- *  const { sizes } = useMeasureCards(entities, cardRefs, scaleRef);
- *
- * Где:
- *  - entities: [{ id, ... }]
- *  - cardRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>
- *  - scaleRef: React.MutableRefObject<number> (из useCamera)
+ canvas/hooks/useMeasureCards
+ Измеряет DOM-элементы карточек сущностей через ResizeObserver
+ и возвращает их размеры в мировых координатах (делим на текущий scale).
  */
 
 import * as React from "react";
@@ -43,13 +35,11 @@ export function useMeasureCards(
       observers[id] = ro;
     };
 
-    // навесили/перенавесили наблюдателей для текущего набора сущностей
     for (const e of entities) {
       const el = cardRefs.current[e.id] || null;
       observeOne(e.id, el);
     }
 
-    // отписка
     return () => {
       for (const ro of Object.values(observers)) ro.disconnect();
     };

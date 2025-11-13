@@ -1,8 +1,4 @@
 // frontend/src/canvas/components/CanvasGrid.tsx
-/**
- * canvas/components/CanvasGrid.tsx
- * Простой фон-грид. Пропсы: world {w,h}, gridSize (px).
- */
 
 
 

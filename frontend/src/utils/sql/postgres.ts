@@ -1,6 +1,6 @@
 import type { Entity, Relationship, FKMeta, LinkMeta } from "../../store/useERStore";
 import {
-  sanitize, snake, toSingular, fkColNameFor,
+  sanitize, snake, toSingular, fkColNameFor, qPg,
   hasColumn, findExistingFKColumn, findExistingLinkEntity, getPrimaryKey
 } from "./common";
 
@@ -17,7 +17,6 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
   const sqlParts: string[] = [];
   const entById = new Map(entities.map((e) => [e.id, e]));
 
-  /* ==== Подготовка: пары many-to-many и явные линк-таблицы по названию ==== */
   const mmPairs: MMPair[] = relationships
     .filter((r) => r.type === "many-to-many")
     .map((r) => {
@@ -35,7 +34,6 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
     })
     .filter(Boolean) as MMPair[];
 
-  // Найти линк-таблицы по названию (если уже созданы пользователем как сущности)
   const linkEntityIds = new Set<string>();
   const linkEntityByPair = new Map<string, Entity | null>();
   for (const pair of mmPairs) {
@@ -45,27 +43,23 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
     linkEntityByPair.set(key, link);
   }
 
-  // Какие явные link-таблицы отложили (у них не было колонок)
-  const deferredLinkTables = new Set<string>(); // имена в sanitize-форме
-
-  // Множество сущностей, участвующих в каких-либо связях (от/к)
-  const involved = new Set<string>();
+  const deferredLinkTables = new Set<string>(); 
+  const involved = new Set<string>();           
   for (const r of relationships) {
     if (entById.has(r.from)) involved.add(r.from);
     if (entById.has(r.to))   involved.add(r.to);
   }
 
-  /* ==== 1) CREATE TABLES (обычные сущности + «полные» link, если есть колонки) ==== */
+  /* ==== 1) CREATE TABLES ==== */
   for (const e of entities) {
     const isExplicitLink = linkEntityIds.has(e.id);
     const tableName = sanitize(e.name);
+    const T = qPg(tableName);
 
-    // Если сущность пустая и НИГДЕ не участвует — пропускаем (не рендерим «висящие» пустышки)
-    if (e.attributes.length === 0 && !involved.has(e.id) && !isExplicitLink) {
-      continue;
-    }
+    // если пустая и не участвует — пропускаем
+    if (e.attributes.length === 0 && !involved.has(e.id) && !isExplicitLink) continue;
 
-    // Если явная link-сущность и вообще НЕТ атрибутов — отложим создание на блок отношений
+    // явная link-таблица без колонок — отложим, реализуем позже полностью - таким образом избегаем дублирования 
     if (isExplicitLink && e.attributes.length === 0) {
       deferredLinkTables.add(tableName);
       continue;
@@ -75,20 +69,17 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
     for (const a of e.attributes) {
       const colName = sanitize(a.name);
       const isPk = (a as any).isPrimaryKey;
-      // Не дублируем NOT NULL при PRIMARY KEY
-      let line = `${colName} ${a.type}${isPk ? " PRIMARY KEY" : ""}`;
+      const C = qPg(colName);
+      let line = `${C} ${a.type}${isPk ? " PRIMARY KEY" : ""}`;
       cols.push(line);
     }
 
     const hasPK = e.attributes.some((a) => (a as any).isPrimaryKey);
-    // Для НЕ link-таблиц, у которых нет PK — добавим surrogate PK
     if (!isExplicitLink && !hasPK) {
-      // SERIAL — осознанно; можно заменить на IDENTITY в будущем
-      cols.unshift(`id SERIAL PRIMARY KEY`);
+      cols.unshift(`${qPg("id")} UUID PRIMARY KEY`);
     }
 
-    // Для явных link-таблиц с уже заданными колонками — создаём, доводим позже
-    sqlParts.push(`CREATE TABLE ${tableName} (\n  ${cols.join(",\n  ")}\n);`);
+    sqlParts.push(`CREATE TABLE ${T} (\n  ${cols.join(",\n  ")}\n);`);
   }
 
   /* ==== 2) RELATIONSHIPS ==== */
@@ -99,6 +90,9 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
 
     const fromName = sanitize(from.name);
     const toName = sanitize(to.name);
+    const F = qPg(fromName);
+    const T = qPg(toName);
+
     const fromPK = getPrimaryKey(from);
     const toPK = getPrimaryKey(to);
     const fromPKName = sanitize(fromPK.name);
@@ -112,7 +106,7 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
         const fkMeta: FKMeta = {
           notNull: true,
           onDelete: "CASCADE",
-          onUpdate: undefined, // обычно опускаем
+          onUpdate: undefined,
           index: true,
           unique: r.type === "one-to-one" ? true : undefined,
           ...(r.fk ?? {}),
@@ -121,18 +115,20 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
         const computedName = fkColNameFor(fromSingular, fromPKName);
         const suggestedExisting = findExistingFKColumn(to, fromName, fromSingular, fromPKName);
         const requestedName = fkMeta.column ?? suggestedExisting ?? computedName;
-        const fkCol = sanitize(requestedName);
+
+        const fkColName = sanitize(requestedName);
+        const fkColQ = qPg(fkColName);
         const fkType = fkMeta.type ?? fromPK.type;
 
-        const existsExact = hasColumn(to, fkCol);
+        const existsExact = hasColumn(to, fkColName);
 
         if (existsExact) {
           if (fkMeta.notNull !== false) {
-            sqlParts.push(`ALTER TABLE ${toName}\n  ALTER COLUMN ${fkCol} SET NOT NULL;`);
+            sqlParts.push(`ALTER TABLE ${T}\n  ALTER COLUMN ${fkColQ} SET NOT NULL;`);
           }
         } else {
           sqlParts.push(
-            `ALTER TABLE ${toName}\n  ADD COLUMN ${fkCol} ${fkType}${fkMeta.notNull === false ? "" : " NOT NULL"};`
+            `ALTER TABLE ${T}\n  ADD COLUMN ${fkColQ} ${fkType}${fkMeta.notNull === false ? "" : " NOT NULL"};`
           );
         }
 
@@ -140,19 +136,21 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
           fkMeta.onDelete ? ` ON DELETE ${fkMeta.onDelete}` : "",
           fkMeta.onUpdate ? ` ON UPDATE ${fkMeta.onUpdate}` : "",
         ].join("");
+
+        const fkName = qPg(`fk_${toName}_${fromName}`);
+        const pkQ = qPg(fromPKName);
         sqlParts.push(
-          `ALTER TABLE ${toName}\n  ADD CONSTRAINT fk_${toName}_${fromName} FOREIGN KEY (${fkCol}) REFERENCES ${fromName}(${fromPKName})${actions};`
+          `ALTER TABLE ${T}\n  ADD CONSTRAINT ${fkName} FOREIGN KEY (${fkColQ}) REFERENCES ${F}(${pkQ})${actions};`
         );
 
-        // Индекс/UNIQUE: если 1:1 ⇒ достаточно UNIQUE (не плодим индекс)
         const wantUnique = fkMeta.unique === undefined ? (r.type === "one-to-one") : fkMeta.unique === true;
 
         if (fkMeta.index !== false && !wantUnique) {
-          sqlParts.push(`CREATE INDEX ON ${toName}(${fkCol});`);
+          sqlParts.push(`CREATE INDEX ON ${T}(${fkColQ});`);
         }
-
         if (wantUnique) {
-          sqlParts.push(`ALTER TABLE ${toName}\n  ADD CONSTRAINT uq_${toName}_${fkCol} UNIQUE (${fkCol});`);
+          const uqName = qPg(`uq_${toName}_${fkColName}`);
+          sqlParts.push(`ALTER TABLE ${T}\n  ADD CONSTRAINT ${uqName} UNIQUE (${fkColQ});`);
         }
         break;
       }
@@ -169,84 +167,90 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
         const key = `${from.id}__${to.id}`;
         const explicitEntity = linkEntityByPair.get(key);
 
-        const leftCol = sanitize(linkMeta.leftColumn ?? fkColNameFor(fromSingular, fromPKName));
+        const leftCol  = sanitize(linkMeta.leftColumn  ?? fkColNameFor(fromSingular, fromPKName));
         const rightCol = sanitize(linkMeta.rightColumn ?? fkColNameFor(toSingularName, toPKName));
 
-        const autoName = `${snake(fromName)}_${snake(toName)}_link`;
+        const leftQ  = qPg(leftCol);
+        const rightQ = qPg(rightCol);
+
+        const autoName    = `${snake(fromName)}_${snake(toName)}_link`;
         const rawLinkName = linkMeta.tableName ?? (explicitEntity ? explicitEntity.name : autoName);
-        const linkName = sanitize(rawLinkName);
+        const linkName    = sanitize(rawLinkName);
+        const L = qPg(linkName);
 
         const actions = [
           linkMeta.onDelete ? ` ON DELETE ${linkMeta.onDelete}` : "",
           linkMeta.onUpdate ? ` ON UPDATE ${linkMeta.onUpdate}` : "",
         ].join("");
 
-        const wasDeferred = deferredLinkTables.has(linkName);
+        const wasDeferred   = deferredLinkTables.has(linkName);
         const explicitHasPK = explicitEntity?.attributes?.some((a) => (a as any).isPrimaryKey) ?? false;
+
+        const fkLName = qPg(`fk_${linkName}_${fromName}`);
+        const fkRName = qPg(`fk_${linkName}_${toName}`);
+        const pkFromQ = qPg(fromPKName);
+        const pkToQ   = qPg(toPKName);
 
         if (explicitEntity) {
           if (wasDeferred) {
-            // Отложенную таблицу создаём полностью
             sqlParts.push(
-              `CREATE TABLE ${linkName} (\n` +
-                `  ${leftCol} ${fromPK.type} NOT NULL,\n` +
-                `  ${rightCol} ${toPK.type} NOT NULL,\n` +
-                (linkMeta.compositePrimaryKey === false || explicitHasPK
-                  ? ""
-                  : `  PRIMARY KEY (${leftCol}, ${rightCol}),\n`) +
-                `  CONSTRAINT fk_${linkName}_${fromName} FOREIGN KEY (${leftCol}) REFERENCES ${fromName}(${fromPKName})${actions},\n` +
-                `  CONSTRAINT fk_${linkName}_${toName} FOREIGN KEY (${rightCol}) REFERENCES ${toName}(${toPKName})${actions}\n` +
+              `CREATE TABLE ${L} (\n` +
+              `  ${leftQ} ${fromPK.type} NOT NULL,\n` +
+              `  ${rightQ} ${toPK.type} NOT NULL,\n` +
+              (linkMeta.compositePrimaryKey === false || explicitHasPK
+                ? ""
+                : `  PRIMARY KEY (${leftQ}, ${rightQ}),\n`) +
+              `  CONSTRAINT ${fkLName} FOREIGN KEY (${leftQ}) REFERENCES ${F}(${pkFromQ})${actions},\n` +
+              `  CONSTRAINT ${fkRName} FOREIGN KEY (${rightQ}) REFERENCES ${T}(${pkToQ})${actions}\n` +
               `);`
             );
             if (linkMeta.index !== false) {
-              sqlParts.push(`CREATE INDEX ON ${linkName}(${leftCol});`);
-              sqlParts.push(`CREATE INDEX ON ${linkName}(${rightCol});`);
+              sqlParts.push(`CREATE INDEX ON ${L}(${leftQ});`);
+              sqlParts.push(`CREATE INDEX ON ${L}(${rightQ});`);
             }
           } else {
-            // Была создана в 1-м проходе — доводим через ALTER
             if (!hasColumn(explicitEntity, leftCol)) {
-              sqlParts.push(`ALTER TABLE ${linkName}\n  ADD COLUMN ${leftCol} ${fromPK.type} NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  ADD COLUMN ${leftQ} ${fromPK.type} NOT NULL;`);
             } else {
-              sqlParts.push(`ALTER TABLE ${linkName}\n  ALTER COLUMN ${leftCol} SET NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  ALTER COLUMN ${leftQ} SET NOT NULL;`);
             }
             if (!hasColumn(explicitEntity, rightCol)) {
-              sqlParts.push(`ALTER TABLE ${linkName}\n  ADD COLUMN ${rightCol} ${toPK.type} NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  ADD COLUMN ${rightQ} ${toPK.type} NOT NULL;`);
             } else {
-              sqlParts.push(`ALTER TABLE ${linkName}\n  ALTER COLUMN ${rightCol} SET NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  ALTER COLUMN ${rightQ} SET NOT NULL;`);
             }
 
             if (linkMeta.compositePrimaryKey !== false && !explicitHasPK) {
-              sqlParts.push(`ALTER TABLE ${linkName}\n  ADD PRIMARY KEY (${leftCol}, ${rightCol});`);
+              sqlParts.push(`ALTER TABLE ${L}\n  ADD PRIMARY KEY (${leftQ}, ${rightQ});`);
             }
 
             sqlParts.push(
-              `ALTER TABLE ${linkName}\n  ADD CONSTRAINT fk_${linkName}_${fromName} FOREIGN KEY (${leftCol}) REFERENCES ${fromName}(${fromPKName})${actions};`
+              `ALTER TABLE ${L}\n  ADD CONSTRAINT ${fkLName} FOREIGN KEY (${leftQ}) REFERENCES ${F}(${pkFromQ})${actions};`
             );
             sqlParts.push(
-              `ALTER TABLE ${linkName}\n  ADD CONSTRAINT fk_${linkName}_${toName} FOREIGN KEY (${rightCol}) REFERENCES ${toName}(${toPKName})${actions};`
+              `ALTER TABLE ${L}\n  ADD CONSTRAINT ${fkRName} FOREIGN KEY (${rightQ}) REFERENCES ${T}(${pkToQ})${actions};`
             );
 
             if (linkMeta.index !== false) {
-              sqlParts.push(`CREATE INDEX ON ${linkName}(${leftCol});`);
-              sqlParts.push(`CREATE INDEX ON ${linkName}(${rightCol});`);
+              sqlParts.push(`CREATE INDEX ON ${L}(${leftQ});`);
+              sqlParts.push(`CREATE INDEX ON ${L}(${rightQ});`);
             }
           }
         } else {
-          // Неявная link-таблица — создаём полностью
           sqlParts.push(
-            `CREATE TABLE ${linkName} (\n` +
-              `  ${leftCol} ${fromPK.type} NOT NULL,\n` +
-              `  ${rightCol} ${toPK.type} NOT NULL,\n` +
-              (linkMeta.compositePrimaryKey === false
-                ? ""
-                : `  PRIMARY KEY (${leftCol}, ${rightCol}),\n`) +
-              `  CONSTRAINT fk_${linkName}_${fromName} FOREIGN KEY (${leftCol}) REFERENCES ${fromName}(${fromPKName})${actions},\n` +
-              `  CONSTRAINT fk_${linkName}_${toName} FOREIGN KEY (${rightCol}) REFERENCES ${toName}(${toPKName})${actions}\n` +
+            `CREATE TABLE ${L} (\n` +
+            `  ${leftQ} ${fromPK.type} NOT NULL,\n` +
+            `  ${rightQ} ${toPK.type} NOT NULL,\n` +
+            (linkMeta.compositePrimaryKey === false
+              ? ""
+              : `  PRIMARY KEY (${leftQ}, ${rightQ}),\n`) +
+            `  CONSTRAINT ${fkLName} FOREIGN KEY (${leftQ}) REFERENCES ${F}(${pkFromQ})${actions},\n` +
+            `  CONSTRAINT ${fkRName} FOREIGN KEY (${rightQ}) REFERENCES ${T}(${pkToQ})${actions}\n` +
             `);`
           );
           if (linkMeta.index !== false) {
-            sqlParts.push(`CREATE INDEX ON ${linkName}(${leftCol});`);
-            sqlParts.push(`CREATE INDEX ON ${linkName}(${rightCol});`);
+            sqlParts.push(`CREATE INDEX ON ${L}(${leftQ});`);
+            sqlParts.push(`CREATE INDEX ON ${L}(${rightQ});`);
           }
         }
 
