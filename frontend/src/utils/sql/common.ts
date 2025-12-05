@@ -70,10 +70,20 @@ export function findExistingFKColumn(
 export function findExistingLinkEntity(a: Entity, b: Entity, all: Entity[]): Entity | null {
   const an = snake(toSingular(sanitize(a.name)));
   const bn = snake(toSingular(sanitize(b.name)));
+
   for (const e of all) {
+
+    
+    if (e.id === a.id || e.id === b.id) {
+      continue;
+    }
+
     const en = snake(sanitize(e.name));
-    if (en.includes(an) && en.includes(bn)) return e;
+    if (en.includes(an) && en.includes(bn)) {
+      return e;
+    }
   }
+
   return null;
 }
 
