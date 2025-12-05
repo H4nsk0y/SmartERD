@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/core/schema/stryker-schema.json",
+  "mutate": [
+    "src/utils/validateModel.ts"
+  ],
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "vitest run --no-watch"
+  },
+  "checkers": ["typescript"],
+  "tsconfigFile": "./tsconfig.json",
+  "reporters": ["html", "clear-text", "progress"],
+  "thresholds": { "high": 80, "low": 65, "break": 60 },
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**", "**/.stryker-tmp/**"]
+}

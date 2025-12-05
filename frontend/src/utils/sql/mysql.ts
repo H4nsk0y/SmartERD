@@ -125,7 +125,10 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
 
         const computedName = fkColNameFor(fromSing, fromPKName);
         const suggestedExisting = findExistingFKColumn(to, fromName, fromSing, fromPKName);
-        const requestedName = fkMeta.column ?? suggestedExisting ?? computedName;
+        const requestedName =
+        (fkMeta.column && fkMeta.column.trim()) ||
+        suggestedExisting ||
+        computedName;
 
         const fkCol  = sanitize(requestedName);
         const fkColQ = qMy(fkCol);

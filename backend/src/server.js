@@ -7,25 +7,23 @@ import { SYSTEM_PROMPT, specToAppFormat, parseModelJson } from './er-generate.js
 
 const app = express();
 
-// Разрешим локальный фронт (localhost/127.0.0.1 любые порты)
+
 app.use(cors({
   origin: [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/],
 }));
 app.use(express.json({ limit: '1mb' }));
 
-// LM Studio (или любой совместимый провайдер)
+// LM Studio 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || 'lm-studio',
   baseURL: process.env.OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1',
 });
 const MODEL = process.env.OPENAI_MODEL || 'meta-llama-3.1-8b-instruct';
 
-// Health-check
 app.get('/health', (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-// Простой чат-эндпоинт
 app.post('/api/ai/chat', async (req, res) => {
   try {
     const { messages } = req.body;

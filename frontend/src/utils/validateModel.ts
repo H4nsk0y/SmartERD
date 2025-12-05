@@ -12,14 +12,14 @@ export interface ValidationIssue {
   level: ValidationLevel;
   code: string;              
   message: string;           
-  where?: string[];           
-  suggestion?: string;        
+  where?: string[];          
+  suggestion?: string;       
 }
 
 /** Результат проверки всей модели */
 export interface ValidationResult {
-  ok: boolean;                
-  issues: ValidationIssue[];  
+  ok: boolean;               
+  issues: ValidationIssue[]; 
 }
 
 /** Быстрая нормализация типа для сравнения совместимости (INT == int ==  Int ) */
@@ -307,6 +307,24 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     const fromSing = toSingular(fromName);
     const toSing   = toSingular(toName);
 
+    // Специально для 1:1: если типы PK по сторонам различаются — считаем это конфликтом типов FK.
+    // Это нужно для сценариев, где ожидается жёсткая совместимость типов в паре 1:1.
+    if (r.type === "one-to-one") {
+      const hasFromType = !!fromPK?.type;
+      const hasToType   = !!toPK?.type;
+      if (hasFromType && hasToType && normType(fromPK.type) !== normType(toPK.type)) {
+        issues.push({
+          level: "error",
+          code: "FK_TYPE_MISMATCH",
+          message: `Связь 1:1 ${from.name}↔${to.name}: типы PK различаются (${fromPK.type} vs ${toPK.type}). FK будет несовместим без приведения типов.`,
+          where: [from.id, to.id],
+          suggestion: `Выравняйте типы PK у обеих таблиц или задайте согласованные типы, чтобы FK был совместим.`,
+        });
+        // При конфликте типов в 1:1 не добавляем ONE_TO_ONE_UNIQUE
+        continue;
+      }
+    }
+
     if (r.type === "one-to-one" || r.type === "one-to-many") {
       // Ищем существующую FK-колонку или ту, что попросил пользователь в инспекторе
       const desiredCol =
@@ -330,7 +348,7 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
           });
         }
       } else {
-        // Колонки нет — генератор добавит;
+        // Колонки нет — генератор добавит
         const autoCol = sanitize((r.fk?.column) || `${snake(fromSing)}_${snake(fromPK.name)}`);
         issues.push({
           level: "info",
@@ -342,13 +360,12 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
         });
       }
 
-      // Для 1:1 генератор добавляет UNIQUE на FK (если не отключено)
+      // Для 1:1 генератор добавляет UNIQUE на FK (если не отключено) — только если не было конфликта типов
       if (r.type === "one-to-one" && (r.fk?.unique !== false)) {
         issues.push({
           level: "info",
           code: "ONE_TO_ONE_UNIQUE",
-          message:
-            `Связь 1:1 ${from.name}↔${to.name}: на FK в целевой таблице будет добавлено ограничение UNIQUE.`,
+          message: `Связь 1:1 ${from.name}↔${to.name}: на FK в целевой таблице будет добавлено ограничение UNIQUE.`,
           where: [to.id],
         });
       }
@@ -397,8 +414,7 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
             issues.push({
               level: "info",
               code: "LINK_COMPOSITE_PK",
-              message:
-                `Линк-таблица «${linkName}»: будет добавлен композитный PRIMARY KEY (${leftCol}, ${rightCol}).`,
+              message: `Линк-таблица «${linkName}»: будет добавлен композитный PRIMARY KEY (${leftCol}, ${rightCol}).`,
               where: [explicit.id],
             });
           }
@@ -430,10 +446,14 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
   }
 
   for (const e of entities) {
+    // FIX: сущности самой пары M:N не проверяем как link-кандидаты
+    const isSide = mmPairs.some(p => p.from.id === e.id || p.to.id === e.id);
+    if (isSide) continue;
+
     const isPartOfAnyPair = mmPairs.some(p => looksLikeLinkName(e.name, p.from.name, p.to.name));
     if (!isPartOfAnyPair) {
       const candidates = entities.filter(x => x.id !== e.id);
-      const hits = candidates.filter(a =>
+      const hits = candidates.filter((a: Entity) =>
         snake(e.name).includes(snake(toSingular(a.name)))
       );
       if (hits.length >= 2) {

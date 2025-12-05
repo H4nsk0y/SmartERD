@@ -442,7 +442,7 @@ function deduplicateRelationships(spec) {
   spec.relationships = out;
 }
 
-/** NEW: self-link по parent_*_id (если LLM не добавила связь) */
+
 function ensureSelfLinkByParentId(spec) {
   for (const e of spec.entities) {
     const parentAttr = (e.attributes || []).find(a => /^parent_.*_id$/i.test(a.name));

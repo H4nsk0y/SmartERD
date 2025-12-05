@@ -321,10 +321,13 @@ export const useERStore = create<ERState>((set, get) => {
     },
 
     setRelationshipFK: (id, fk) => {
-      pushHistory();
+      const clean: Partial<FKMeta> = { ...fk };
+      if (typeof clean.column === "string" && clean.column.trim() === "") {
+        delete clean.column; 
+      }
       set((s) => ({
         relationships: s.relationships.map((r) =>
-          r.id === id ? { ...r, fk: { ...(r.fk ?? {}), ...fk } } : r
+          r.id === id ? { ...r, fk: { ...(r.fk ?? {}), ...clean } } : r
         ),
       }));
     },

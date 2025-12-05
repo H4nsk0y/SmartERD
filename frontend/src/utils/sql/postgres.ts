@@ -114,7 +114,10 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
 
         const computedName = fkColNameFor(fromSingular, fromPKName);
         const suggestedExisting = findExistingFKColumn(to, fromName, fromSingular, fromPKName);
-        const requestedName = fkMeta.column ?? suggestedExisting ?? computedName;
+        const requestedName =
+        (fkMeta.column && fkMeta.column.trim()) || // пустые строки игнорируем
+        suggestedExisting ||
+        computedName;
 
         const fkColName = sanitize(requestedName);
         const fkColQ = qPg(fkColName);

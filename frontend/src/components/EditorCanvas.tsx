@@ -811,3 +811,4 @@ export default function EditorCanvas() {
     </div>
   );
 }
+
