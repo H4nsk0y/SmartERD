@@ -1,7 +1,3 @@
-// frontend/src/canvas/components/SQLPanel.tsx
-// Правый столбец с результатом генерации SQL.
-// Теперь с редактированием и подсветкой синтаксиса (CodeMirror).
-
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
@@ -14,8 +10,7 @@ import {
   SQLDialect as CmSqlDialect,
 } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
-
-export type SqlDialect = "postgres" | "mysql" | "sqlite" | "mssql";
+import type { SqlDialect } from "../../utils/sql/types";
 
 export default function SQLPanel({
   sql,
@@ -37,7 +32,6 @@ export default function SQLPanel({
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [value, setValue] = useState<string>(sql ?? "");
-
 
   useEffect(() => {
     setValue(sql ?? "");
@@ -76,9 +70,10 @@ export default function SQLPanel({
   const handleCopy = async () => {
     try {
       await navigator.clipboard?.writeText(value);
-      onCopyAll?.(); 
+      onCopyAll?.();
       setCopied(true);
     } catch {
+      // ignore
     }
   };
 

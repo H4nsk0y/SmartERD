@@ -1,175 +1,78 @@
+# SmartERD 
+Интерактивный редактор ER-диаграмм для учебных проектов по базам данных: сущности/связи → проверка → SQL + AI-помощник.
 
-```
-smarted
-├─ backend
-│  ├─ package-lock.json
-│  ├─ package.json
-│  └─ src
-│     ├─ er-generate.js
-│     └─ server.js
-├─ frontend
-│  ├─ .stryker-tmp
-│  │  └─ sandbox-mV3aaU
-│  │     ├─ eslint.config.js
-│  │     ├─ index.html
-│  │     ├─ package-lock.json
-│  │     ├─ package.json
-│  │     ├─ postcss.config.js
-│  │     ├─ public
-│  │     │  ├─ loader.gif
-│  │     │  └─ vite.svg
-│  │     ├─ README.md
-│  │     ├─ src
-│  │     │  ├─ api
-│  │     │  │  └─ ai.ts
-│  │     │  ├─ App.css
-│  │     │  ├─ App.tsx
-│  │     │  ├─ canvas
-│  │     │  │  ├─ components
-│  │     │  │  │  ├─ AIPanel.tsx
-│  │     │  │  │  ├─ CanvasGrid.tsx
-│  │     │  │  │  ├─ ConfirmModal.tsx
-│  │     │  │  │  ├─ EditorToolbar.tsx
-│  │     │  │  │  ├─ EntitiesLayer.tsx
-│  │     │  │  │  ├─ LinkHintToast.tsx
-│  │     │  │  │  ├─ Minimap.tsx
-│  │     │  │  │  ├─ RelationChip.tsx
-│  │     │  │  │  ├─ RelationInspector.tsx
-│  │     │  │  │  ├─ RelationLabel.tsx
-│  │     │  │  │  ├─ RelationsLayer.tsx
-│  │     │  │  │  ├─ RelationsSvg.tsx
-│  │     │  │  │  ├─ SQLPanel.tsx
-│  │     │  │  │  └─ ValidationHints.tsx
-│  │     │  │  ├─ geom
-│  │     │  │  │  └─ index.ts
-│  │     │  │  ├─ hooks
-│  │     │  │  │  ├─ index.ts
-│  │     │  │  │  ├─ useCamera.ts
-│  │     │  │  │  └─ useMeasureCards.ts
-│  │     │  │  ├─ types
-│  │     │  │  │  └─ index.ts
-│  │     │  │  └─ utils
-│  │     │  │     └─ index.ts
-│  │     │  ├─ components
-│  │     │  │  └─ EditorCanvas.tsx
-│  │     │  ├─ i18n
-│  │     │  │  └─ index.ts
-│  │     │  ├─ index.css
-│  │     │  ├─ main.tsx
-│  │     │  ├─ pages
-│  │     │  │  ├─ AIPage.tsx
-│  │     │  │  └─ EditorPage.tsx
-│  │     │  ├─ store
-│  │     │  │  ├─ useAppStore.ts
-│  │     │  │  └─ useERStore.ts
-│  │     │  └─ utils
-│  │     │     ├─ generateSQL.ts
-│  │     │     ├─ sql
-│  │     │     │  ├─ common.ts
-│  │     │     │  ├─ index.ts
-│  │     │     │  ├─ mysql.ts
-│  │     │     │  ├─ postgres.ts
-│  │     │     │  └─ types.ts
-│  │     │     ├─ tests
-│  │     │     │  ├─ helpers.ts
-│  │     │     │  ├─ validateModel.mockHelpers.test.ts
-│  │     │     │  └─ validateModel.test.ts
-│  │     │     └─ validateModel.ts
-│  │     ├─ stryker.conf.json
-│  │     ├─ tailwind.config.js
-│  │     ├─ tsconfig.app.json
-│  │     ├─ tsconfig.json
-│  │     ├─ tsconfig.node.json
-│  │     ├─ vite.config.ts
-│  │     └─ vitest.config.ts
-│  ├─ cucumber.mjs
-│  ├─ eslint.config.js
-│  ├─ features
-│  │  ├─ fk_types.feature
-│  │  ├─ relations.feature
-│  │  ├─ step_definitions
-│  │  │  └─ common.steps.ts
-│  │  ├─ support
-│  │  │  ├─ hooks.ts
-│  │  │  └─ state.ts
-│  │  └─ validation_entities.feature
-│  ├─ index.html
-│  ├─ package-lock.json
-│  ├─ package.json
-│  ├─ postcss.config.js
-│  ├─ public
-│  │  ├─ loader.gif
-│  │  └─ vite.svg
-│  ├─ README.md
-│  ├─ reports
-│  │  └─ mutation
-│  │     └─ mutation.html
-│  ├─ src
-│  │  ├─ api
-│  │  │  └─ ai.ts
-│  │  ├─ App.css
-│  │  ├─ App.tsx
-│  │  ├─ canvas
-│  │  │  ├─ components
-│  │  │  │  ├─ AIPanel.tsx
-│  │  │  │  ├─ CanvasGrid.tsx
-│  │  │  │  ├─ ConfirmModal.tsx
-│  │  │  │  ├─ EditorToolbar.tsx
-│  │  │  │  ├─ EntitiesLayer.tsx
-│  │  │  │  ├─ LinkHintToast.tsx
-│  │  │  │  ├─ Minimap.tsx
-│  │  │  │  ├─ RelationChip.tsx
-│  │  │  │  ├─ RelationInspector.tsx
-│  │  │  │  ├─ RelationLabel.tsx
-│  │  │  │  ├─ RelationsLayer.tsx
-│  │  │  │  ├─ RelationsSvg.tsx
-│  │  │  │  ├─ SQLPanel.tsx
-│  │  │  │  └─ ValidationHints.tsx
-│  │  │  ├─ geom
-│  │  │  │  └─ index.ts
-│  │  │  ├─ hooks
-│  │  │  │  ├─ index.ts
-│  │  │  │  ├─ useCamera.ts
-│  │  │  │  └─ useMeasureCards.ts
-│  │  │  ├─ types
-│  │  │  │  └─ index.ts
-│  │  │  └─ utils
-│  │  │     └─ index.ts
-│  │  ├─ components
-│  │  │  └─ EditorCanvas.tsx
-│  │  ├─ i18n
-│  │  │  └─ index.ts
-│  │  ├─ index.css
-│  │  ├─ main.tsx
-│  │  ├─ pages
-│  │  │  ├─ AIPage.tsx
-│  │  │  └─ EditorPage.tsx
-│  │  ├─ store
-│  │  │  ├─ useAppStore.ts
-│  │  │  └─ useERStore.ts
-│  │  └─ utils
-│  │     ├─ generateSQL.ts
-│  │     ├─ sql
-│  │     │  ├─ common.ts
-│  │     │  ├─ index.ts
-│  │     │  ├─ mysql.ts
-│  │     │  ├─ postgres.ts
-│  │     │  └─ types.ts
-│  │     ├─ tests
-│  │     │  ├─ helpers.ts
-│  │     │  ├─ validateModel.mockHelpers.test.ts
-│  │     │  └─ validateModel.test.ts
-│  │     └─ validateModel.ts
-│  ├─ stryker.conf.json
-│  ├─ tailwind.config.js
-│  ├─ tools
-│  │  └─ plot_perf.mjs
-│  ├─ tsconfig.app.json
-│  ├─ tsconfig.cucumber.json
-│  ├─ tsconfig.json
-│  ├─ tsconfig.node.json
-│  ├─ vite.config.ts
-│  └─ vitest.config.ts
-└─ README.md
+<p align="center">
+  <img alt="SmartERD" src="docs/banner.png" width="860" />
+</p>
 
-```
+<p align="center">
+  <a href="https://github.com/H4nsk0y/SmartERD">
+    <img alt="Repo" src="https://img.shields.io/badge/GitHub-SmartERD-181717?logo=github" />
+  </a>
+  <img alt="Tech" src="https://img.shields.io/badge/Frontend-React%20%2B%20TS-61DAFB?logo=react&logoColor=000" />
+  <img alt="Tech" src="https://img.shields.io/badge/Styling-TailwindCSS-38BDF8?logo=tailwindcss&logoColor=000" />
+  <img alt="Tech" src="https://img.shields.io/badge/Backend-Node%20%2B%20Express-3C873A?logo=node.js&logoColor=fff" />
+  <img alt="AI" src="https://img.shields.io/badge/AI-OpenAI%20Compatible-111827" />
+</p>
+
+---
+
+## Содержание
+- [Что это](#что-это)
+- [Фичи](#фичи)
+- [Быстрый старт](#быстрый-старт)
+- [Конфигурация AI](#конфигурация-ai)
+- [Структура репозитория](#структура-репозитория)
+- [Roadmap](#roadmap)
+- [Автор](#автор)
+
+---
+
+## Что это
+**SmartERD** помогает быстро собрать ER-модель (сущности, атрибуты, связи), подсветить проблемы и получить SQL под разные диалекты.
+
+Проект подходит для:
+- лабораторных/курсовых по БД,
+- подготовки к зачёту/экзамену (проверка модели + нормализация),
+- прототипирования схемы перед реализацией.
+
+---
+
+## Фичи
+### Editor
+- 🧱 Создание сущностей и атрибутов (в т.ч. отметка PK)
+- 🔗 Создание связей между сущностями (1:N, N:M)
+- 🧭 Панорамирование/зум канваса, «вписать всё», миникарта
+- ✅ Валидация модели (подсказки и предупреждения)
+- 🧠 Подсказки по нормализации (и действия по исправлению)
+- 📤 Экспорт: JSON / PNG / SVG
+- 📥 Импорт JSON
+
+### SQL
+- ⚙️ Генерация SQL из ER-модели
+- 🗂️ Переключение диалекта (PostgreSQL/MySQL/SQLite/MS SQL)
+- ✍️ Редактируемое SQL-поле + копирование
+
+### AI
+- 💬 AI-чат
+- 🧬 Генерация ER-модели по текстовому описанию предметной области
+- 🔌 Поддержка **OpenAI-compatible** серверов (например, LM Studio локально)
+
+---
+
+## Быстрый старт
+
+### Требования
+- Node.js (желательно 18+)
+- npm (или pnpm/yarn — по желанию)
+
+### Запуск backend (API)
+```bash
+cd backend
+npm install
+node src/server.js
+# API будет на http://localhost:8787
+
+
+Автор
+GitHub: H4nsk0y

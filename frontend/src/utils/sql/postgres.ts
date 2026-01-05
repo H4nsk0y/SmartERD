@@ -1,7 +1,17 @@
 import type { Entity, Relationship, FKMeta, LinkMeta } from "../../store/useERStore";
 import {
-  sanitize, snake, toSingular, fkColNameFor, qPg,
-  hasColumn, findExistingFKColumn, findExistingLinkEntity, getPrimaryKey
+  sanitize,
+  snake,
+  toSingular,
+  fkColNameFor,
+  qPg,
+  hasColumn,
+  findExistingFKColumn,
+  findExistingLinkEntity,
+  getPrimaryKey,
+  suggestLinkTableName,
+  uniqueName,
+  limitIdentifier,
 } from "./common";
 
 type MMPair = {
@@ -16,6 +26,10 @@ type MMPair = {
 export function generatePostgresSQL(entities: Entity[], relationships: Relationship[]): string {
   const sqlParts: string[] = [];
   const entById = new Map(entities.map((e) => [e.id, e]));
+
+  const usedTableNames = new Set(entities.map((e) => sanitize(e.name).toLowerCase()));
+  const linkSqlNameByEntityId = new Map<string, string>();
+  const linkSqlNameByPair = new Map<string, string>();
 
   const mmPairs: MMPair[] = relationships
     .filter((r) => r.type === "many-to-many")
@@ -36,32 +50,67 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
 
   const linkEntityIds = new Set<string>();
   const linkEntityByPair = new Map<string, Entity | null>();
-  for (const pair of mmPairs) {
-    const key = `${pair.from.id}__${pair.to.id}`;
-    const link = findExistingLinkEntity(pair.from, pair.to, entities);
-    if (link) linkEntityIds.add(link.id);
-    linkEntityByPair.set(key, link);
+
+  for (const r of relationships.filter((x) => x.type === "many-to-many")) {
+    const from = entById.get(r.from);
+    const to = entById.get(r.to);
+    if (!from || !to) continue;
+
+    const key = `${from.id}__${to.id}`;
+
+    const fromToken = snake(toSingular(sanitize(from.name)));
+    const toToken = snake(toSingular(sanitize(to.name)));
+
+    const suggestedBase = suggestLinkTableName(from.name, to.name);
+    const explicit = findExistingLinkEntity(from, to, entities);
+
+    if (explicit) {
+      linkEntityIds.add(explicit.id);
+    }
+    linkEntityByPair.set(key, explicit);
+
+    let chosen = suggestedBase;
+
+    // Пользовательский override
+    if (r.link?.tableName) {
+      chosen = sanitize(r.link.tableName);
+    } else if (explicit) {
+      const explicitSnake = snake(sanitize(explicit.name));
+      const looksOk = explicitSnake.includes(fromToken) && explicitSnake.includes(toToken);
+      chosen = looksOk ? sanitize(explicit.name) : sanitize(suggestedBase);
+    }
+
+    chosen = uniqueName(chosen, usedTableNames);
+    usedTableNames.add(chosen.toLowerCase());
+
+    linkSqlNameByPair.set(key, chosen);
+    if (explicit) linkSqlNameByEntityId.set(explicit.id, chosen);
   }
 
-  const deferredLinkTables = new Set<string>(); 
-  const involved = new Set<string>();           
+  const deferredLinkTables = new Set<string>();
+  const involved = new Set<string>();
   for (const r of relationships) {
     if (entById.has(r.from)) involved.add(r.from);
-    if (entById.has(r.to))   involved.add(r.to);
+    if (entById.has(r.to)) involved.add(r.to);
   }
 
   /* ==== 1) CREATE TABLES ==== */
   for (const e of entities) {
     const isExplicitLink = linkEntityIds.has(e.id);
-    const tableName = sanitize(e.name);
-    const T = qPg(tableName);
+
+    const baseTableName = sanitize(e.name);
+    const sqlTableName = isExplicitLink
+      ? (linkSqlNameByEntityId.get(e.id) ?? baseTableName)
+      : baseTableName;
+
+    const T = qPg(sqlTableName);
 
     // если пустая и не участвует — пропускаем
     if (e.attributes.length === 0 && !involved.has(e.id) && !isExplicitLink) continue;
 
-    // явная link-таблица без колонок — отложим, реализуем позже полностью - таким образом избегаем дублирования 
+    // явная link-таблица без колонок — отложим (и ВАЖНО: под финальным SQL-именем)
     if (isExplicitLink && e.attributes.length === 0) {
-      deferredLinkTables.add(tableName);
+      deferredLinkTables.add(sqlTableName);
       continue;
     }
 
@@ -70,7 +119,7 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
       const colName = sanitize(a.name);
       const isPk = (a as any).isPrimaryKey;
       const C = qPg(colName);
-      let line = `${C} ${a.type}${isPk ? " PRIMARY KEY" : ""}`;
+      const line = `${C} ${a.type}${isPk ? " PRIMARY KEY" : ""}`;
       cols.push(line);
     }
 
@@ -115,9 +164,9 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
         const computedName = fkColNameFor(fromSingular, fromPKName);
         const suggestedExisting = findExistingFKColumn(to, fromName, fromSingular, fromPKName);
         const requestedName =
-        (fkMeta.column && fkMeta.column.trim()) || // пустые строки игнорируем
-        suggestedExisting ||
-        computedName;
+          (fkMeta.column && fkMeta.column.trim()) ||
+          suggestedExisting ||
+          computedName;
 
         const fkColName = sanitize(requestedName);
         const fkColQ = qPg(fkColName);
@@ -140,19 +189,20 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
           fkMeta.onUpdate ? ` ON UPDATE ${fkMeta.onUpdate}` : "",
         ].join("");
 
-        const fkName = qPg(`fk_${toName}_${fromName}`);
+        const fkName = qPg(limitIdentifier(`fk_${toName}_${fromName}`, 63));
         const pkQ = qPg(fromPKName);
         sqlParts.push(
           `ALTER TABLE ${T}\n  ADD CONSTRAINT ${fkName} FOREIGN KEY (${fkColQ}) REFERENCES ${F}(${pkQ})${actions};`
         );
 
-        const wantUnique = fkMeta.unique === undefined ? (r.type === "one-to-one") : fkMeta.unique === true;
+        const wantUnique =
+          fkMeta.unique === undefined ? (r.type === "one-to-one") : fkMeta.unique === true;
 
         if (fkMeta.index !== false && !wantUnique) {
           sqlParts.push(`CREATE INDEX ON ${T}(${fkColQ});`);
         }
         if (wantUnique) {
-          const uqName = qPg(`uq_${toName}_${fkColName}`);
+          const uqName = qPg(limitIdentifier(`uq_${toName}_${fkColName}`, 63));
           sqlParts.push(`ALTER TABLE ${T}\n  ADD CONSTRAINT ${uqName} UNIQUE (${fkColQ});`);
         }
         break;
@@ -170,15 +220,14 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
         const key = `${from.id}__${to.id}`;
         const explicitEntity = linkEntityByPair.get(key);
 
-        const leftCol  = sanitize(linkMeta.leftColumn  ?? fkColNameFor(fromSingular, fromPKName));
+        const leftCol = sanitize(linkMeta.leftColumn ?? fkColNameFor(fromSingular, fromPKName));
         const rightCol = sanitize(linkMeta.rightColumn ?? fkColNameFor(toSingularName, toPKName));
 
-        const leftQ  = qPg(leftCol);
+        const leftQ = qPg(leftCol);
         const rightQ = qPg(rightCol);
 
-        const autoName    = `${snake(fromName)}_${snake(toName)}_link`;
-        const rawLinkName = linkMeta.tableName ?? (explicitEntity ? explicitEntity.name : autoName);
-        const linkName    = sanitize(rawLinkName);
+        const autoName = suggestLinkTableName(fromName, toName);
+        const linkName = linkSqlNameByPair.get(key) ?? sanitize(linkMeta.tableName ?? autoName);
         const L = qPg(linkName);
 
         const actions = [
@@ -186,26 +235,27 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
           linkMeta.onUpdate ? ` ON UPDATE ${linkMeta.onUpdate}` : "",
         ].join("");
 
-        const wasDeferred   = deferredLinkTables.has(linkName);
-        const explicitHasPK = explicitEntity?.attributes?.some((a) => (a as any).isPrimaryKey) ?? false;
+        const wasDeferred = deferredLinkTables.has(linkName);
+        const explicitHasPK =
+          explicitEntity?.attributes?.some((a) => (a as any).isPrimaryKey) ?? false;
 
-        const fkLName = qPg(`fk_${linkName}_${fromName}`);
-        const fkRName = qPg(`fk_${linkName}_${toName}`);
+        const fkLName = qPg(limitIdentifier(`fk_${linkName}_${fromName}`, 63));
+        const fkRName = qPg(limitIdentifier(`fk_${linkName}_${toName}`, 63));
         const pkFromQ = qPg(fromPKName);
-        const pkToQ   = qPg(toPKName);
+        const pkToQ = qPg(toPKName);
 
         if (explicitEntity) {
           if (wasDeferred) {
             sqlParts.push(
               `CREATE TABLE ${L} (\n` +
-              `  ${leftQ} ${fromPK.type} NOT NULL,\n` +
-              `  ${rightQ} ${toPK.type} NOT NULL,\n` +
-              (linkMeta.compositePrimaryKey === false || explicitHasPK
-                ? ""
-                : `  PRIMARY KEY (${leftQ}, ${rightQ}),\n`) +
-              `  CONSTRAINT ${fkLName} FOREIGN KEY (${leftQ}) REFERENCES ${F}(${pkFromQ})${actions},\n` +
-              `  CONSTRAINT ${fkRName} FOREIGN KEY (${rightQ}) REFERENCES ${T}(${pkToQ})${actions}\n` +
-              `);`
+                `  ${leftQ} ${fromPK.type} NOT NULL,\n` +
+                `  ${rightQ} ${toPK.type} NOT NULL,\n` +
+                (linkMeta.compositePrimaryKey === false || explicitHasPK
+                  ? ""
+                  : `  PRIMARY KEY (${leftQ}, ${rightQ}),\n`) +
+                `  CONSTRAINT ${fkLName} FOREIGN KEY (${leftQ}) REFERENCES ${F}(${pkFromQ})${actions},\n` +
+                `  CONSTRAINT ${fkRName} FOREIGN KEY (${rightQ}) REFERENCES ${T}(${pkToQ})${actions}\n` +
+                `);`
             );
             if (linkMeta.index !== false) {
               sqlParts.push(`CREATE INDEX ON ${L}(${leftQ});`);
@@ -226,6 +276,10 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
             if (linkMeta.compositePrimaryKey !== false && !explicitHasPK) {
               sqlParts.push(`ALTER TABLE ${L}\n  ADD PRIMARY KEY (${leftQ}, ${rightQ});`);
             }
+            if (linkMeta.compositePrimaryKey === false) {
+             const uq = qPg(limitIdentifier(`uq_${linkName}_${leftCol}_${rightCol}`, 63));
+              sqlParts.push(`ALTER TABLE ${L}\n  ADD CONSTRAINT ${uq} UNIQUE (${leftQ}, ${rightQ});`);
+            }
 
             sqlParts.push(
               `ALTER TABLE ${L}\n  ADD CONSTRAINT ${fkLName} FOREIGN KEY (${leftQ}) REFERENCES ${F}(${pkFromQ})${actions};`
@@ -242,14 +296,14 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
         } else {
           sqlParts.push(
             `CREATE TABLE ${L} (\n` +
-            `  ${leftQ} ${fromPK.type} NOT NULL,\n` +
-            `  ${rightQ} ${toPK.type} NOT NULL,\n` +
-            (linkMeta.compositePrimaryKey === false
-              ? ""
-              : `  PRIMARY KEY (${leftQ}, ${rightQ}),\n`) +
-            `  CONSTRAINT ${fkLName} FOREIGN KEY (${leftQ}) REFERENCES ${F}(${pkFromQ})${actions},\n` +
-            `  CONSTRAINT ${fkRName} FOREIGN KEY (${rightQ}) REFERENCES ${T}(${pkToQ})${actions}\n` +
-            `);`
+              `  ${leftQ} ${fromPK.type} NOT NULL,\n` +
+              `  ${rightQ} ${toPK.type} NOT NULL,\n` +
+              (linkMeta.compositePrimaryKey === false
+                ? `  CONSTRAINT ${qPg(limitIdentifier(`uq_${linkName}_${leftCol}_${rightCol}`, 63))} UNIQUE (${leftQ}, ${rightQ}),\n`
+                : `  PRIMARY KEY (${leftQ}, ${rightQ}),\n`) +
+              `  CONSTRAINT ${fkLName} FOREIGN KEY (${leftQ}) REFERENCES ${F}(${pkFromQ})${actions},\n` +
+              `  CONSTRAINT ${fkRName} FOREIGN KEY (${rightQ}) REFERENCES ${T}(${pkToQ})${actions}\n` +
+              `);`
           );
           if (linkMeta.index !== false) {
             sqlParts.push(`CREATE INDEX ON ${L}(${leftQ});`);
