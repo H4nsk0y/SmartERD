@@ -114,3 +114,102 @@ html, body, #root {
   inset: auto;
   pointer-events: none;
 }
+
+/* === Широкие кнопки для тулбара (иконка + подпись), когда compactToolbar=false */
+.tool-btn-wide {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 44px;
+  padding: 0 12px;
+  gap: 8px;
+
+  margin: 0 8px 8px 0;
+
+  font-size: 14px;
+  line-height: 1;
+  color: #1f2937;
+  cursor: pointer;
+
+  border-radius: 12px;
+  background: rgba(99, 102, 241, 0.10);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+
+  transition:
+    background-color .12s ease,
+    border-color .12s ease,
+    box-shadow .12s ease;
+}
+
+.dark .tool-btn-wide {
+  color: #f9fafb;
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.45);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.40);
+}
+
+@media (hover: hover) {
+  .tool-btn-wide:hover {
+    background: rgba(99, 102, 241, 0.16);
+    border-color: rgba(99, 102, 241, 0.55);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+  }
+
+  .dark .tool-btn-wide:hover {
+    background: rgba(99, 102, 241, 0.22);
+    border-color: rgba(99, 102, 241, 0.60);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  }
+}
+
+.tool-btn-wide:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(99,102,241,0.35),
+    0 4px 10px rgba(0,0,0,0.12);
+}
+
+.tool-btn-wide:active {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+}
+
+.tool-btn-wide[disabled] {
+  opacity: .5;
+  filter: grayscale(.25);
+  cursor: not-allowed;
+}
+
+
+.tool-btn-wide::before,
+.tool-btn-wide::after,
+.tool-btn-wide .corner-anchor::before,
+.tool-btn-wide .corner-anchor::after {
+  content: none !important;
+}
+
+.tool-btn-wide .corner-anchor {
+  position: static;
+  inset: auto;
+  pointer-events: none;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s ease-out both;
+}
+
+.animate-bob {
+  animation: bob 1.8s ease-in-out infinite;
+}

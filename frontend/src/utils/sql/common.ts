@@ -68,20 +68,28 @@ export function findExistingFKColumn(
 }
 
 export function findExistingLinkEntity(a: Entity, b: Entity, all: Entity[]): Entity | null {
+  const anSing = toSingular(sanitize(a.name));
+  const bnSing = toSingular(sanitize(b.name));
+  const apk = getPrimaryKey(a).name;
+  const bpk = getPrimaryKey(b).name;
+
+  const aCol = sanitize(fkColNameFor(anSing, apk));
+  const bCol = sanitize(fkColNameFor(bnSing, bpk));
+
+  // 1) Структурный матч: таблица содержит оба FK-столбца (user_id + order_id и т.п.)
+  for (const e of all) {
+    if (e.id === a.id || e.id === b.id) continue;
+    if (hasColumn(e, aCol) && hasColumn(e, bCol)) return e;
+  }
+
+  // 2) Матч по имени (старое поведение)
   const an = snake(toSingular(sanitize(a.name)));
   const bn = snake(toSingular(sanitize(b.name)));
 
   for (const e of all) {
-
-    
-    if (e.id === a.id || e.id === b.id) {
-      continue;
-    }
-
+    if (e.id === a.id || e.id === b.id) continue;
     const en = snake(sanitize(e.name));
-    if (en.includes(an) && en.includes(bn)) {
-      return e;
-    }
+    if (en.includes(an) && en.includes(bn)) return e;
   }
 
   return null;
@@ -100,4 +108,51 @@ export function qPg(name: string) {
 }
 export function qMy(name: string) {
   return `\`${sanitize(name)}\``;
+}
+
+/**
+ * Предлагаем каноническое имя линк-таблицы для N:M.
+ * Важно: порядок from/to сохраняем (не сортируем), чтобы не менять существующее поведение.
+ */
+export function suggestLinkTableName(fromEntityName: string, toEntityName: string): string {
+  const left = snake(toSingular(sanitize(fromEntityName)));
+  const right = snake(toSingular(sanitize(toEntityName)));
+  return `${left}_${right}_link`;
+}
+
+/**
+ * Возвращает уникальное имя (добавляя _2, _3, ...) относительно набора уже занятых имён.
+ * Сравнение case-insensitive, т.к. для SQL имена зачастую приводятся.
+ */
+export function uniqueName(base: string, usedLower: Set<string>): string {
+  const b = sanitize(base);
+  const norm = b.toLowerCase();
+  if (!usedLower.has(norm)) return b;
+
+  let i = 2;
+  while (true) {
+    const cand = sanitize(`${b}_${i}`);
+    const n = cand.toLowerCase();
+    if (!usedLower.has(n)) return cand;
+    i += 1;
+  }
+}
+
+/**
+ * Ограничивает длину идентификатора (например, MySQL limit 64) с добавлением стабильного hash-суффикса.
+ * Возвращает безопасную ASCII-строку.
+ */
+export function limitIdentifier(name: string, maxLen: number): string {
+  const s = sanitize(name);
+  if (s.length <= maxLen) return s;
+
+  // FNV-1a 32-bit
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  const hex = (h >>> 0).toString(16).padStart(8, "0");
+  const keep = Math.max(1, maxLen - 1 - hex.length);
+  return `${s.slice(0, keep)}_${hex}`;
 }

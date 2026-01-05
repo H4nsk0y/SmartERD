@@ -1,3 +1,4 @@
+// frontend/src/i18n/index.ts
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
@@ -9,6 +10,7 @@ const resources = {
         editor: "Редактор",
         settings: "Настройки",
         ai: "AI-Помощник",
+        kb: "База знаний",
       },
       buttons: {
         changeLang: "Сменить язык → EN",
@@ -54,6 +56,7 @@ const resources = {
         editor: "Editor",
         settings: "Settings",
         ai: "AI Helper",
+        kb: "Knowledge Base",
       },
       buttons: {
         changeLang: "Switch language → RU",
@@ -102,3 +105,4 @@ i18n.use(initReactI18next).init({
 });
 
 export default i18n;
+// frontend/src/canvas/components/SQLPanel.tsx
