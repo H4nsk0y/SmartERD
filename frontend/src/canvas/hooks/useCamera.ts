@@ -4,7 +4,6 @@
  */
 
 import * as React from "react";
-import type { Size } from "../types";
 import { clamp } from "../utils";
 
 type Point = { x: number; y: number };

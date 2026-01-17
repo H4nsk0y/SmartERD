@@ -71,6 +71,7 @@ export default function RelationInspector({
     (typedIsDifferentFromSimilar || (typedName && !toColumns.has(snake(typedName))));
 
   const typeOptions = ["", "INT", "BIGINT", "UUID", "VARCHAR(255)", "TEXT", "DATE", "TIMESTAMP", "BOOLEAN", "FLOAT", "DECIMAL(10,2)"];
+  const sanitizeIdWithUnderscore = (v: string) => (v ?? "").replace(/[^A-Za-z0-9_]/g, "");
 
   return (
     <div
@@ -120,7 +121,7 @@ export default function RelationInspector({
             <input
               className="w-full px-2 py-1 rounded border bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
               value={fkForm.column}
-              onChange={(e) => setFkForm((s) => ({ ...s, column: sanitizeIdentifierInput(e.target.value) }))}
+              onChange={(e) => setFkForm((s) => ({ ...s, column: sanitizeIdWithUnderscore(e.target.value) }))}
               placeholder={`например, ${defaultFkName}`}
             />
           </Field>

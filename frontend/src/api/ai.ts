@@ -1,28 +1,26 @@
 // frontend/src/api/ai.ts
-export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+import { API_BASE } from "./client";
 
-const API = 'http://localhost:8787';
+export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 export async function aiChat(messages: ChatMessage[]): Promise<string> {
-  const r = await fetch(`${API}/api/ai/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const r = await fetch(`${API_BASE}/api/ai/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ messages }),
   });
   const j = await r.json();
-  if (!r.ok || !j.ok) throw new Error(j.error || 'AI chat failed');
+  if (!r.ok || !j.ok) throw new Error(j.error || "AI chat failed");
   return j.reply as string;
 }
 
-// генерация ER
 export async function aiGenerateER(description: string) {
-  const r = await fetch(`${API}/api/ai/er/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const r = await fetch(`${API_BASE}/api/ai/er/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ description }),
   });
   const j = await r.json();
-  if (!r.ok || !j.ok) throw new Error(j.error || 'AI ER generate failed');
-  // вернём { entities, relationships, spec }
+  if (!r.ok || !j.ok) throw new Error(j.error || "AI ER generate failed");
   return { entities: j.entities, relationships: j.relationships, spec: j.spec };
 }

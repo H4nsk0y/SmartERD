@@ -1,3 +1,5 @@
+// frontend/src/canvas/components/RelationLabel.tsx
+// Этот файл отвечает за отображение и выбор типа связи (1:1, 1:N, N:M) между сущностями на канвасе.
 import * as React from "react";
 import type { RelationKind } from "../types";
 

@@ -3,7 +3,9 @@ import * as React from "react";
 import { useAppStore } from "../../store/useAppStore";
 
 export type EditorToolbarProps = {
+  isAddingEntity: boolean; 
   isLinking: boolean;
+
   showMinimap: boolean;
   showSqlPanel: boolean;
   showAIPanel: boolean;
@@ -23,7 +25,6 @@ export type EditorToolbarProps = {
   onFitAll: () => void;
   onToggleMinimap: () => void;
 
-  // На будущее: появится, когда будет авторизация и БД
   onSaveProject?: () => void;
   canSaveProject?: boolean;
 };
@@ -32,11 +33,7 @@ function Icon({
   children,
   className = "",
 }: React.PropsWithChildren<{ className?: string }>) {
-  return (
-    <span className={["inline-flex items-center justify-center", className].join(" ")}>
-      {children}
-    </span>
-  );
+  return <span className={["inline-flex items-center justify-center", className].join(" ")}>{children}</span>;
 }
 
 function Svg({
@@ -146,7 +143,16 @@ const I = {
 };
 
 function Separator() {
-  return <div className="mx-1 h-7 w-px bg-gray-200 dark:bg-gray-700 shrink-0" />;
+  return <div className="mx-1 h-7 w-px bg-gray-200/80 dark:bg-gray-700/80 shrink-0" />;
+}
+
+function ActiveDot() {
+  return (
+    <span className="absolute -top-1 -right-1">
+      <span className="absolute inline-flex h-3 w-3 rounded-full bg-indigo-400 opacity-70 motion-safe:animate-ping" />
+      <span className="relative inline-flex h-3 w-3 rounded-full bg-indigo-500" />
+    </span>
+  );
 }
 
 function Btn({
@@ -157,6 +163,7 @@ function Btn({
   icon,
   danger,
   disabled,
+  testId,
 }: {
   compact: boolean;
   active?: boolean;
@@ -165,23 +172,47 @@ function Btn({
   icon: React.ReactNode;
   danger?: boolean;
   disabled?: boolean;
+  testId?: string;
 }) {
   const base = compact ? "tool-btn-icon tool-btn-sliced" : "tool-btn-wide";
-  const ring = active ? "ring-2 ring-indigo-400" : "";
+
+  const activeCls = active
+    ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white border-indigo-400 shadow-lg shadow-indigo-500/25 ring-2 ring-indigo-300/70"
+    : "";
+
   const dangerCls = danger
     ? "border-red-300 dark:border-red-700/60 bg-red-50/80 dark:bg-red-900/25 hover:bg-red-100 dark:hover:bg-red-900/35"
     : "";
+
+  const iconCls = active ? "text-white drop-shadow" : compact ? "" : "text-indigo-700 dark:text-indigo-200";
+
   return (
     <button
       type="button"
-      className={[base, ring, dangerCls].join(" ")}
+      data-testid={testId}
+      className={[
+        base,
+        "relative overflow-hidden transition-all duration-200 active:scale-[0.98]",
+        activeCls,
+        dangerCls,
+      ].join(" ")}
       title={label}
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
     >
       <span className="corner-anchor" />
-      <Icon className={compact ? "" : "text-indigo-700 dark:text-indigo-200"}>{icon}</Icon>
+
+      {/* лёгкий “блик” на активной кнопке */}
+      {active && (
+        <span className="pointer-events-none absolute inset-0 opacity-40">
+          <span className="absolute -left-10 top-0 h-full w-20 rotate-12 bg-white/30 blur-md motion-safe:animate-[pulse_1.6s_ease-in-out_infinite]" />
+        </span>
+      )}
+
+      {active && <ActiveDot />}
+
+      <Icon className={iconCls}>{icon}</Icon>
       {!compact && <span className="text-sm font-medium">{label}</span>}
     </button>
   );
@@ -202,7 +233,7 @@ function FileBtn({
 }) {
   const cls = compact ? "tool-btn-icon tool-btn-sliced" : "tool-btn-wide";
   return (
-    <label className={[cls, "cursor-pointer"].join(" ")} title={label} aria-label={label}>
+    <label className={[cls, "cursor-pointer relative overflow-hidden transition active:scale-[0.98]"].join(" ")} title={label} aria-label={label}>
       <span className="corner-anchor" />
       <Icon className={compact ? "" : "text-indigo-700 dark:text-indigo-200"}>{icon}</Icon>
       {!compact && <span className="text-sm font-medium">{label}</span>}
@@ -215,7 +246,9 @@ export default function EditorToolbar(props: EditorToolbarProps) {
   const compactToolbar = useAppStore((s) => s.compactToolbar);
 
   const {
+    isAddingEntity,
     isLinking,
+
     showMinimap,
     showSqlPanel,
     showAIPanel,
@@ -244,32 +277,24 @@ export default function EditorToolbar(props: EditorToolbarProps) {
   return (
     <div className="mb-2 flex items-center gap-2 flex-nowrap overflow-x-auto px-2 py-1">
       {/* Создание/связи */}
-      <Btn compact={compact} onClick={onAddEntity} label="Сущность" icon={I.plus} />
-      <Btn
-        compact={compact}
-        onClick={onToggleLink}
-        active={isLinking}
-        label="Связь"
-        icon={I.link}
-      />
+      <Btn compact={compact} onClick={onAddEntity} active={isAddingEntity} label="Сущность" icon={I.plus} />
+      <Btn compact={compact} onClick={onToggleLink} active={isLinking} label="Связь" icon={I.link} />
 
       <Separator />
 
       {/* Импорт/экспорт */}
       <Btn compact={compact} onClick={onExportJSON} label="Экспорт" icon={I.download} />
-      <FileBtn
-        compact={compact}
-        label="Импорт"
-        icon={I.upload}
-        accept=".json,application/json"
-        onChange={onImportJSON}
-      />
+      <FileBtn compact={compact} label="Импорт" icon={I.upload} accept=".json,application/json" onChange={onImportJSON} />
 
-      {/* На будущее: сохранение проекта в аккаунт */}
       {canSaveProject && onSaveProject && (
-        <Btn compact={compact} onClick={onSaveProject} label="Сохранить" icon={I.save} />
+        <Btn
+          compact={compact}
+          onClick={onSaveProject}
+          label="Сохранить"
+          icon={I.save}
+          testId="project-save"
+        />
       )}
-
       <Separator />
 
       {/* Генерация */}
@@ -278,32 +303,14 @@ export default function EditorToolbar(props: EditorToolbarProps) {
       <Separator />
 
       {/* Панели */}
-      <Btn
-        compact={compact}
-        onClick={onToggleSqlPanel}
-        active={showSqlPanel}
-        label="SQL панель"
-        icon={I.panel}
-      />
-      <Btn
-        compact={compact}
-        onClick={onToggleAIPanel}
-        active={showAIPanel}
-        label="AI панель"
-        icon={I.bot}
-      />
+      <Btn compact={compact} onClick={onToggleSqlPanel} active={showSqlPanel} label="SQL панель" icon={I.panel} />
+      <Btn compact={compact} onClick={onToggleAIPanel} active={showAIPanel} label="AI панель" icon={I.bot} />
 
       <Separator />
 
       {/* Вид */}
       <Btn compact={compact} onClick={onFitAll} label="Вписать" icon={I.fit} />
-      <Btn
-        compact={compact}
-        onClick={onToggleMinimap}
-        active={showMinimap}
-        label="Миникарта"
-        icon={I.map}
-      />
+      <Btn compact={compact} onClick={onToggleMinimap} active={showMinimap} label="Миникарта" icon={I.map} />
 
       <Separator />
 

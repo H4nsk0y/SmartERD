@@ -1,3 +1,4 @@
+// frontend/src/components/EditorCanvas.tsx
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useERStore } from "../store/useERStore";
 import { generateSQL } from "../utils/generateSQL";
@@ -19,8 +20,10 @@ import { useCamera } from "../canvas/hooks/useCamera";
 import type { FKForm as FKFormT, LinkForm as LinkFormT, Size } from "../canvas/types";
 import EditorToolbar from "../canvas/components/EditorToolbar";
 import ConfirmModal from "../canvas/components/ConfirmModal";
+import InfoModal from "../canvas/components/InfoModal";
 import { useAppStore } from "../store/useAppStore";
 import { useAuthStore } from "../store/useAuthStore";
+import { apiProjectCreate } from "../api/projects";
 
 import ExportModal, { type ExportOptions } from "../canvas/components/ExportModal";
 import SaveProjectModal from "../canvas/components/SaveProjectModal";
@@ -31,6 +34,16 @@ const WORLD_H = 50000;
 
 type RelationKind = "one-to-one" | "one-to-many" | "many-to-many";
 const snap = (v: number) => Math.round(v / GRID) * GRID;
+
+type Point = { x: number; y: number };
+
+type Marquee = {
+  mode: "replace" | "add";
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+};
 
 /** Смещаем диаграмму так, чтобы не было отрицательных координат и минимальные x/y ≥ margin */
 function normalizeDiagramPositions(
@@ -80,10 +93,12 @@ function downloadDataUrl(dataUrl: string, fileName: string) {
   a.click();
 }
 
-function makeProjectId() {
-  const anyCrypto = (globalThis as any).crypto;
-  if (anyCrypto?.randomUUID) return anyCrypto.randomUUID();
-  return `p_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+function uniq(ids: string[]) {
+  return Array.from(new Set(ids));
+}
+
+function intersects(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
 export default function EditorCanvas() {
@@ -91,11 +106,14 @@ export default function EditorCanvas() {
     entities,
     relationships,
     addEntity,
-    updateEntityPosition,
+    beginBatch,
+    endBatch,
+    updateEntitiesPositions,
     addAttribute,
     removeAttribute,
     addRelationship,
     removeEntity,
+    removeEntities,
     renameEntity,
     selectedRelationshipId,
     setSelectedRelationship,
@@ -113,7 +131,7 @@ export default function EditorCanvas() {
   const { defaultShowMinimap, defaultShowSqlPanel, confirmDelete } = useAppStore();
 
   // AUTH
-  const { isAuthenticated, addProject } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
 
   // UI
   const [isAddingEntity, setIsAddingEntity] = useState(false);
@@ -124,6 +142,56 @@ export default function EditorCanvas() {
   const [hoveredRel, setHoveredRel] = useState<string | null>(null);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
+
+  //NEW: выделение сущностей (multi-select)
+  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
+  const selectedEntityIdsSet = useMemo(() => new Set(selectedEntityIds), [selectedEntityIds]);
+  const selectedEntityIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    selectedEntityIdsRef.current = new Set(selectedEntityIds);
+  }, [selectedEntityIds]);
+
+  // prune selection if entities disappeared
+  useEffect(() => {
+    const alive = new Set(entities.map((e) => e.id));
+    setSelectedEntityIds((prev) => prev.filter((id) => alive.has(id)));
+  }, [entities]);
+
+  //NEW: рамка выделения (marquee)
+  const [marquee, setMarquee] = useState<Marquee | null>(null);
+  const marqueeRef = useRef<Marquee | null>(null);
+  const marqueeMovedRef = useRef(false);
+  useEffect(() => {
+    marqueeRef.current = marquee;
+  }, [marquee]);
+
+  // NEW: подтверждение удаления группы сущностей
+  const [confirmEntities, setConfirmEntities] = useState<string[] | null>(null);
+  const [pulseEntityIds, setPulseEntityIds] = useState<string[]>([]);
+  const [pulseRelId, setPulseRelId] = useState<string | null>(null);
+  const [pulseToken, setPulseToken] = useState(0);
+  const pulseTimerRef = useRef<number | null>(null);
+
+  const pulseEntitySet = useMemo(() => new Set(pulseEntityIds), [pulseEntityIds]);
+
+  const triggerPulse = (opts: { entityIds?: string[]; relId?: string | null }) => {
+    if (pulseTimerRef.current) window.clearTimeout(pulseTimerRef.current);
+
+    const eids = uniq((opts.entityIds ?? []).filter(Boolean));
+    const rid = opts.relId ?? null;
+
+    setPulseEntityIds(eids);
+    setPulseRelId(rid);
+    setPulseToken((t) => t + 1);
+
+    // авто-сброс подсветки
+    pulseTimerRef.current = window.setTimeout(() => {
+      setPulseEntityIds([]);
+      setPulseRelId(null);
+    }, 1400);
+  };
+
+
   // локальные видимости панелей (инициализируем из настроек)
   const [showMinimap, setShowMinimap] = useState<boolean>(defaultShowMinimap);
   const [showSqlPanel, setShowSqlPanel] = useState<boolean>(defaultShowSqlPanel);
@@ -132,6 +200,18 @@ export default function EditorCanvas() {
   // модалки подтверждений
   const [confirmRelId, setConfirmRelId] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState<boolean>(false);
+
+  // info modal
+  const [infoModalOpen, setInfoModalOpen] = useState(false);
+  const [infoModalMessage, setInfoModalMessage] = useState("");
+  const [infoModalTitle, setInfoModalTitle] = useState("");
+
+  // Функция для показа информационного модального окна
+  const showInfoModal = (message: string, title: string = "Информация") => {
+    setInfoModalMessage(message);
+    setInfoModalTitle(title);
+    setInfoModalOpen(true);
+  };
 
   // toast
   const [linkHintPulse, setLinkHintPulse] = useState(0);
@@ -185,13 +265,17 @@ export default function EditorCanvas() {
   void justSaved;
   void justReset;
 
-  // drag
+  // drag (group)
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const dragStartWorld = useRef<{ x: number; y: number } | null>(null);
-  const entityStartPos = useRef<{ x: number; y: number } | null>(null);
+  const dragStartWorld = useRef<Point | null>(null);
+  const dragGroupStartPos = useRef<Record<string, Point>>({});
+  const draggingIdsRef = useRef<string[]>([]);
+
+  const dragBatchStartedRef = useRef(false);
+  const dragStartClientRef = useRef<Point | null>(null);
 
   // preview «+ сущность»
-  const [mouseWorld, setMouseWorld] = useState<{ x: number; y: number } | null>(null);
+  const [mouseWorld, setMouseWorld] = useState<Point | null>(null);
 
   // refs & sizes
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -224,7 +308,10 @@ export default function EditorCanvas() {
 
   async function doExport(opts: ExportOptions) {
     if (entities.length === 0 && relationships.length === 0) {
-      alert("ER-модель пустая — экспортировать нечего.");
+      showInfoModal(
+        "ER-модель пустая — экспортировать нечего.",
+        "Нет данных для экспорта"
+      );
       return;
     }
 
@@ -277,42 +364,69 @@ export default function EditorCanvas() {
       }
     } catch (err) {
       console.error(err);
-      alert("Не удалось экспортировать PNG/SVG. Проверь консоль и наличие пакета html-to-image.");
+      showInfoModal(
+        "Не удалось экспортировать PNG/SVG. Проверьте консоль и наличие пакета html-to-image.",
+        "Ошибка экспорта"
+      );
     }
   }
 
-  function doSaveProject(projectName: string) {
+  async function doSaveProject(projectName: string) {
     if (entities.length === 0 && relationships.length === 0) {
-      alert("ER-модель пустая — сохранять нечего.");
+      showInfoModal(
+        "ER-модель пустая — сохранять нечего.",
+        "Нет данных для сохранения"
+      );
       return;
     }
-    const id = makeProjectId();
-    const updatedAt = Date.now();
+
+    const token = useAuthStore.getState().token;
+    if (!token) {
+      showInfoModal(
+        "Сначала войдите в аккаунт, чтобы сохранять проекты в БД.",
+        "Требуется авторизация"
+      );
+      return;
+    }
 
     try {
-      localStorage.setItem(
-        `smarterd-project:${id}`,
-        JSON.stringify({ id, name: projectName, updatedAt, entities, relationships })
+      const created = await apiProjectCreate(token, {
+        name: projectName,
+        data: { entities, relationships },
+      });
+
+      // обновим список проектов в сторе (чтобы в ЛК сразу появилось)
+      useAuthStore.getState().upsertProject(created);
+    } catch (e: any) {
+      showInfoModal(
+        e?.message || "Не удалось сохранить проект.",
+        "Ошибка сохранения"
       );
-    } catch (err) {
-      console.error(err);
-      alert("Не удалось сохранить проект в localStorage (возможно, лимит).");
       return;
     }
-
-    addProject({ id, name: projectName, updatedAt });
   }
 
   const jumpToWhere = (whereIds: string[]) => {
-    const entityId = whereIds.find((id) => entities.some((e) => e.id === id));
-    if (entityId) {
-      const e = entities.find((x) => x.id === entityId)!;
-      camera.centerOn(canvasRef.current, e.x + 100, e.y + 60);
+    const entityHits = whereIds.filter((id) => entities.some((e) => e.id === id));
+    const relHit = whereIds.find((id) => relationships.some((r) => r.id === id)) ?? null;
+
+    // Если есть сущности — центрируемся на первой, но пульсируем все попавшие
+    if (entityHits.length > 0) {
+      const first = entities.find((x) => x.id === entityHits[0])!;
+      camera.centerOn(canvasRef.current, first.x + 100, first.y + 60);
+
+      // при jump на сущность — не держим инспектор связи
+      setSelectedRelationship(null);
+      setInspectorOpen(false);
+      setHoveredRel(null);
+
+      triggerPulse({ entityIds: entityHits, relId: null });
       return;
     }
-    const relId = whereIds.find((id) => relationships.some((r) => r.id === id));
-    if (relId) {
-      const r = relationships.find((x) => x.id === relId)!;
+
+    // Если есть связь — центрируемся на середине и пульсируем её
+    if (relHit) {
+      const r = relationships.find((x) => x.id === relHit)!;
       const from = entities.find((e) => e.id === r.from);
       const to = entities.find((e) => e.id === r.to);
       if (from && to) {
@@ -320,8 +434,14 @@ export default function EditorCanvas() {
         const midY = (from.y + to.y) / 2;
         camera.centerOn(canvasRef.current, midX, midY);
       }
-      setSelectedRelationship(relId);
+
+      setSelectedRelationship(relHit);
       setInspectorOpen(true);
+
+      // при jump на связь — логично сбросить выделение сущностей (как у тебя при клике по связи)
+      setSelectedEntityIds([]);
+
+      triggerPulse({ entityIds: [], relId: relHit });
     }
   };
 
@@ -387,34 +507,58 @@ export default function EditorCanvas() {
         }
         if (exportOpen) setExportOpen(false);
         if (saveOpen) setSaveOpen(false);
+
+        // NEW: Esc сбрасывает рамку/выделение сущностей
+        setMarquee(null);
+        marqueeMovedRef.current = false;
+        setSelectedEntityIds([]);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [isAddingEntity, inspectorOpen, exportOpen, saveOpen]);
 
-  // Delete/Backspace — удаление связи (с подтверждением, если выбрано в настройке)
+  // Delete/Backspace — удаление выделенных сущностей ИЛИ связи
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (inspectorOpen) return;
-      if ((e.key === "Delete" || e.key === "Backspace") && hoveredRel) {
-        const inInput = (e.target as HTMLElement)?.closest(
-          "input, textarea, select, [contenteditable]"
-        );
-        if (inInput) return;
 
-        if (confirmDelete) {
-          setConfirmRelId(hoveredRel);
-        } else {
-          useERStore.getState().removeRelationship(hoveredRel);
-          setSelectedRelationship(null);
-          setHoveredRel(null);
+      const inInput = (e.target as HTMLElement)?.closest(
+        "input, textarea, select, [contenteditable]"
+      );
+      if (inInput) return;
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const sel = [...selectedEntityIdsRef.current];
+
+        // приоритет: если есть выбранные сущности — удаляем их
+        if (sel.length > 0) {
+          e.preventDefault();
+          if (confirmDelete) {
+            setConfirmEntities(sel);
+          } else {
+            removeEntities(sel);
+            setSelectedEntityIds([]);
+          }
+          return;
+        }
+
+        // иначе — старая логика удаления связи
+        if (hoveredRel) {
+          e.preventDefault();
+          if (confirmDelete) {
+            setConfirmRelId(hoveredRel);
+          } else {
+            useERStore.getState().removeRelationship(hoveredRel);
+            setSelectedRelationship(null);
+            setHoveredRel(null);
+          }
         }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [hoveredRel, inspectorOpen, confirmDelete, setSelectedRelationship]);
+  }, [hoveredRel, inspectorOpen, confirmDelete, removeEntity, setSelectedRelationship]);
 
   // Синхронизация локальной видимости панелей с настройками
   useEffect(() => {
@@ -468,26 +612,104 @@ export default function EditorCanvas() {
     setMouseWorld(null);
   };
 
-  // drag карточки (RAF)
+  // NEW: начало marquee на пустом месте
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    camera.onPanStart(e);
+
+    if (isAddingEntity || isLinking) return;
+
+    // только ЛКМ, без ctrl/meta (они у нас под пан/систему)
+    if (e.button !== 0) return;
+    if (e.ctrlKey || e.metaKey) return;
+
+    const inInput = (e.target as HTMLElement)?.closest("input, textarea, select, [contenteditable], button");
+    if (inInput) return;
+
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const w = camera.toWorld(e.clientX, e.clientY, rect);
+
+    marqueeMovedRef.current = false;
+
+    const mode: Marquee["mode"] = e.shiftKey ? "add" : "replace";
+    if (mode === "replace") {
+      setSelectedEntityIds([]);
+    }
+
+    // снимаем выделение связи
+    setSelectedRelationship(null);
+    setInspectorOpen(false);
+    setHoveredRel(null);
+
+    setMarquee({ mode, x0: w.x, y0: w.y, x1: w.x, y1: w.y });
+    e.preventDefault();
+  };
+
+  // drag карточки / marquee (RAF)
   const moveRaf = useRef<number>(0);
-  const movePayload = useRef<{ type: "move" | "drag"; e: React.MouseEvent<HTMLDivElement> } | null>(
+  const movePayload = useRef<{ kind: "move" | "drag"; e: React.MouseEvent<HTMLDivElement> } | null>(
     null
   );
 
   const handleMouseDownEntity = (e: React.MouseEvent<HTMLDivElement>, id: string) => {
     e.stopPropagation();
+    if (isLinking) return;
+
+    // отменяем marquee, если вдруг был
+    setMarquee(null);
+    marqueeMovedRef.current = false;
+
+    // логика выделения при клике по сущности
+    const prev = selectedEntityIdsRef.current;
+    const isMeta = e.ctrlKey || e.metaKey;
+    const isShift = e.shiftKey;
+
+    let nextSel: string[] = [];
+
+    if (isMeta) {
+      // toggle
+      nextSel = prev.has(id) ? selectedEntityIds.filter((x) => x !== id) : [...selectedEntityIds, id];
+    } else if (isShift) {
+      // add
+      nextSel = prev.has(id) ? selectedEntityIds : [...selectedEntityIds, id];
+    } else {
+      // replace (если уже выбран — оставляем группу)
+      nextSel = prev.has(id) ? selectedEntityIds : [id];
+    }
+
+    nextSel = uniq(nextSel);
+    setSelectedEntityIds(nextSel);
+
+    // снимаем выделение связи/инспектор
+    setSelectedRelationship(null);
+    setInspectorOpen(false);
+    setHoveredRel(null);
+
+    // если после toggle сущность стала НЕ выбранной — не начинаем drag
+    if (!nextSel.includes(id)) return;
+
     const rect = canvasRef.current!.getBoundingClientRect();
     const w = camera.toWorld(e.clientX, e.clientY, rect);
     dragStartWorld.current = w;
-    const ent = entities.find((x) => x.id === id);
-    entityStartPos.current = ent ? { x: ent.x, y: ent.y } : null;
+
+    // стартовые позиции для всей группы
+    const startMap: Record<string, Point> = {};
+    for (const sid of nextSel) {
+      const ent = entities.find((x) => x.id === sid);
+      if (ent) startMap[sid] = { x: ent.x, y: ent.y };
+    }
+    dragGroupStartPos.current = startMap;
+    draggingIdsRef.current = nextSel;
+
+    dragBatchStartedRef.current = false;
+    dragStartClientRef.current = { x: e.clientX, y: e.clientY };
     setDraggingId(id);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     camera.onPanMove(e);
-    movePayload.current = { type: draggingId ? "drag" : "move", e };
+    movePayload.current = { kind: draggingId ? "drag" : "move", e };
     if (moveRaf.current) return;
+
     moveRaf.current = requestAnimationFrame(() => {
       moveRaf.current = 0;
       const payload = movePayload.current;
@@ -498,35 +720,111 @@ export default function EditorCanvas() {
 
       if (isAddingEntity) setMouseWorld(wNow);
 
-      if (payload.type === "drag" && draggingId && dragStartWorld.current && entityStartPos.current) {
+      // marquee update
+      const m = marqueeRef.current;
+      if (m && !draggingId) {
+        const dx = Math.abs(wNow.x - m.x0);
+        const dy = Math.abs(wNow.y - m.y0);
+        if (dx > 1 || dy > 1) marqueeMovedRef.current = true;
+
+        setMarquee((cur) => (cur ? { ...cur, x1: wNow.x, y1: wNow.y } : cur));
+      }
+
+      // group drag
+      if (payload.kind === "drag" && draggingId && dragStartWorld.current) {
+        if (!dragBatchStartedRef.current && dragStartClientRef.current) {
+          const dxs = payload.e.clientX - dragStartClientRef.current.x;
+          const dys = payload.e.clientY - dragStartClientRef.current.y;
+          if (dxs * dxs + dys * dys < 9) return; // < 3px
+          beginBatch();
+          dragBatchStartedRef.current = true;
+        }
+
         const dx = wNow.x - dragStartWorld.current.x;
         const dy = wNow.y - dragStartWorld.current.y;
-        updateEntityPosition(
-          draggingId,
-          snap(entityStartPos.current.x + dx),
-          snap(entityStartPos.current.y + dy)
-        );
+
+        const updates = draggingIdsRef.current
+          .map((sid) => {
+            const start = dragGroupStartPos.current[sid];
+            if (!start) return null;
+            return { id: sid, x: snap(start.x + dx), y: snap(start.y + dy) };
+          })
+          .filter(Boolean) as Array<{ id: string; x: number; y: number }>;
+
+        if (updates.length) updateEntitiesPositions(updates);
       }
     });
   };
 
-  const handleMouseUp = () => {
+  const applyMarqueeSelection = () => {
+    const m = marqueeRef.current;
+    if (!m) return;
+
+    // кликом без движения: просто убрать рамку
+    if (!marqueeMovedRef.current) {
+      setMarquee(null);
+      return;
+    }
+
+    const minX = Math.min(m.x0, m.x1);
+    const minY = Math.min(m.y0, m.y1);
+    const maxX = Math.max(m.x0, m.x1);
+    const maxY = Math.max(m.y0, m.y1);
+
+    const selRect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+
+    const hits = entities
+      .filter((en) => {
+        const w = sizes[en.id]?.w ?? 224;
+        const h = sizes[en.id]?.h ?? 80;
+        const box = { x: en.x, y: en.y, w, h };
+        return intersects(selRect, box);
+      })
+      .map((en) => en.id);
+
+    if (m.mode === "add") {
+      setSelectedEntityIds((prev) => uniq([...prev, ...hits]));
+    } else {
+      setSelectedEntityIds(uniq(hits));
+    }
+
+    setMarquee(null);
+    marqueeMovedRef.current = false;
+  };
+
+  const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
     camera.onPanEnd();
+
+    // завершение marquee
+    if (marqueeRef.current) applyMarqueeSelection();
+
+    if (dragBatchStartedRef.current) {
+      endBatch();
+      dragBatchStartedRef.current = false;
+    }
+    dragStartClientRef.current = null;
     setDraggingId(null);
     dragStartWorld.current = null;
-    entityStartPos.current = null;
+    dragGroupStartPos.current = {};
+    draggingIdsRef.current = [];
   };
 
   // link mode
   const handleEntityClick = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isLinking) return;
-    if (!selectedForLink) setSelectedForLink(id);
-    else if (selectedForLink !== id) {
-      addRelationship(selectedForLink, id, "one-to-many");
-      setSelectedForLink(null);
-      setIsLinking(false);
+
+    // Первый клик — выбираем "from"
+    if (!selectedForLink) {
+      setSelectedForLink(id);
+      return;
     }
+
+    // Второй клик — создаём связь (в т.ч. самосвязь, если id === selectedForLink)
+    addRelationship(selectedForLink, id, "one-to-many");
+
+    setSelectedForLink(null);
+    setIsLinking(false);
   };
 
   // инициализация форм инспектора
@@ -570,7 +868,7 @@ export default function EditorCanvas() {
     [camera.scale, camera.offset]
   );
 
-  // подсветка сущностей
+  // подсветка сущностей (по связям)
   const isLinked = (entityId: string) =>
     relationships.some(
       (r) =>
@@ -589,7 +887,7 @@ export default function EditorCanvas() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size === 0) {
-      alert("Файл пустой.");
+      showInfoModal("Файл пустой.", "Ошибка импорта");
       e.target.value = "";
       return;
     }
@@ -611,10 +909,13 @@ export default function EditorCanvas() {
             camera.fitAll(canvasRef.current, boxes, 64);
           }, 0);
         } else {
-          alert("Импортировать нечего — файл не содержит данных ER-модели.");
+          showInfoModal(
+            "Импортировать нечего — файл не содержит данных ER-модели.",
+            "Нет данных для импорта"
+          );
         }
       } catch {
-        alert("Ошибка при чтении файла: невалидный JSON.");
+        showInfoModal("Ошибка при чтении файла: невалидный JSON.", "Ошибка импорта");
       }
     };
     reader.readAsText(file);
@@ -623,20 +924,25 @@ export default function EditorCanvas() {
 
   const handleGenerateSQL = () => {
     if (entities.length === 0) {
-      alert("ER-модель пустая — нечего преобразовывать в SQL.");
+      showInfoModal(
+        "ER-модель пустая — нечего преобразовывать в SQL.",
+        "Нет данных для генерации SQL"
+      );
+      setHintsOpen(true);
       return;
     }
 
     const { ok, issues } = validateModel(entities, relationships);
     if (!ok) {
-      alert(
+      showInfoModal(
         "Найдены проблемы:\n\n" +
           issues
             .map(
               (i) =>
                 `• [${i.level}] ${i.message}${i.suggestion ? `\n  → ${i.suggestion}` : ""}`
             )
-            .join("\n\n")
+            .join("\n\n"),
+        "Проблемы с моделью"
       );
       setHintsOpen(true);
       return;
@@ -670,6 +976,7 @@ export default function EditorCanvas() {
       clearAll();
       setSelectedRelationship(null);
       setHoveredRel(null);
+      setSelectedEntityIds([]);
     }
   };
 
@@ -685,26 +992,35 @@ export default function EditorCanvas() {
     return () => el.removeEventListener("wheel", stop);
   }, []);
 
+  // helper: рисуем рамку
+  const marqueeBox = useMemo(() => {
+    if (!marquee) return null;
+    const minX = Math.min(marquee.x0, marquee.x1);
+    const minY = Math.min(marquee.y0, marquee.y1);
+    const maxX = Math.max(marquee.x0, marquee.x1);
+    const maxY = Math.max(marquee.y0, marquee.y1);
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }, [marquee]);
+
   return (
-    // ✅ ВАЖНО: теперь это колонка -> тулбар сверху, рабочая зона снизу
     <div className="w-full h-full flex flex-col min-h-0 overflow-hidden">
-      {/* ✅ ТУЛБАР — ВЕРХНЯЯ СТРОКА НА ВСЮ ШИРИНУ */}
       <div className="shrink-0">
         <EditorToolbar
           isLinking={isLinking}
+          isAddingEntity={isAddingEntity}
           showMinimap={showMinimap}
           showSqlPanel={showSqlPanel}
           showAIPanel={showAIPanel}
           onAddEntity={() => {
-            setIsAddingEntity(true);
+            setIsAddingEntity((v) => !v);
             setIsLinking(false);
+            setSelectedForLink(null);
           }}
           onToggleLink={() => {
             setIsLinking((v) => !v);
             setIsAddingEntity(false);
             setSelectedForLink(null);
           }}
-          // экспорт открывает модалку
           onExportJSON={() => setExportOpen(true)}
           onImportJSON={handleImportJSON}
           canSaveProject={isAuthenticated}
@@ -744,7 +1060,7 @@ export default function EditorCanvas() {
             }`}
             style={{ overscrollBehavior: "none", touchAction: "none" }}
             onClick={handleCanvasClick}
-            onMouseDown={(e) => camera.onPanStart(e)}
+            onMouseDown={handleCanvasMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
           >
@@ -770,6 +1086,14 @@ export default function EditorCanvas() {
                 </div>
               )}
 
+              {/* ✅ NEW: рамка выделения */}
+              {marqueeBox && (
+                <div
+                  className="absolute z-40 pointer-events-none rounded border border-indigo-500 bg-indigo-400/20"
+                  style={{ left: marqueeBox.x, top: marqueeBox.y, width: marqueeBox.w, height: marqueeBox.h }}
+                />
+              )}
+
               {/* Relations + labels */}
               <RelationsSvg
                 entities={entities}
@@ -777,11 +1101,15 @@ export default function EditorCanvas() {
                 sizes={sizes}
                 hoveredId={hoveredRel}
                 selectedId={selectedRelationshipId ?? null}
+                pulsedId={pulseRelId}
+                pulseToken={pulseToken}
                 onHover={(id) => setHoveredRel(id)}
                 onClick={(id) => {
                   setActiveMenu(null);
                   setSelectedRelationship(id);
                   setInspectorOpen(true);
+                  // если выбрали связь — сбрасываем выделение сущностей
+                  setSelectedEntityIds([]);
                 }}
                 worldSize={{ w: WORLD_W, h: WORLD_H }}
                 renderLabel={({ id, x, y, kind }) => (
@@ -805,6 +1133,9 @@ export default function EditorCanvas() {
                 entities={entities}
                 sizes={sizes}
                 cardRefs={cardRefs}
+                pulseEntityIds={pulseEntitySet}
+                pulseToken={pulseToken}
+                selectedEntityIds={selectedEntityIdsSet}
                 editingId={editingId}
                 setEditingId={setEditingId}
                 renamingId={renamingId}
@@ -861,7 +1192,10 @@ export default function EditorCanvas() {
                     setHintsOpen(true);
                   } catch (err) {
                     console.error(err);
-                    alert("Не удалось применить действие нормализации (см. консоль).");
+                    showInfoModal(
+                      "Не удалось применить действие нормализации. Проверьте консоль.",
+                      "Ошибка применения"
+                    );
                   }
                 }}
               />
@@ -951,11 +1285,28 @@ export default function EditorCanvas() {
         open={saveOpen}
         defaultName="My Project"
         onClose={() => setSaveOpen(false)}
-        onConfirm={(name) => {
-          doSaveProject(name);
+        onConfirm={async (name) => {
+          await doSaveProject(name);
           setSaveOpen(false);
         }}
       />
+
+      {/* ✅ NEW: Модалка подтверждения удаления выделенных сущностей */}
+      {confirmEntities && (
+        <ConfirmModal
+          open={true}
+          title="Удалить выбранные сущности?"
+          message={`Удалить выбранные сущности (${confirmEntities.length}) и все их связи?`}
+          confirmText="Удалить"
+          cancelText="Отмена"
+          onCancel={() => setConfirmEntities(null)}
+          onConfirm={() => {
+            removeEntities(confirmEntities);
+            setSelectedEntityIds([]);
+            setConfirmEntities(null);
+          }}
+        />
+      )}
 
       {/* Модалка подтверждения очистки всей диаграммы */}
       {confirmClearOpen && (
@@ -970,6 +1321,7 @@ export default function EditorCanvas() {
             clearAll();
             setSelectedRelationship(null);
             setHoveredRel(null);
+            setSelectedEntityIds([]);
             setConfirmClearOpen(false);
           }}
         />
@@ -999,6 +1351,15 @@ export default function EditorCanvas() {
             />
           );
         })()}
+
+      {/* Info Modal для уведомлений */}
+      <InfoModal
+        open={infoModalOpen}
+        title={infoModalTitle}
+        message={infoModalMessage}
+        onConfirm={() => setInfoModalOpen(false)}
+        type="info"
+      />
     </div>
   );
 }

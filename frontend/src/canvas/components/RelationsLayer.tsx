@@ -1,6 +1,7 @@
 // src/canvas/components/RelationsLayer.tsx
 /**
  * RelationsLayer — стабильный hover.
+ * этот файл отвечает за отрисовку связей между сущностями на канвасе.
 */
 
 import React from "react";

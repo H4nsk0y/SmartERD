@@ -7,7 +7,7 @@ import * as React from "react";
 
 export default function LinkHintToast({
   pulse,
-  text = "Выберите сущности для связи",
+  text = "Выберите две сущности (или дважды одну для самосвязи)",
   durationMs = 1800,
 }: {
   pulse: number;

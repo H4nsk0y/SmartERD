@@ -1,3 +1,8 @@
+// frontend/src/canvas/components/ExportModal.tsx
+/**
+ * canvas/components/ExportModal
+ * Модальное окно экспорта диаграммы (JSON, PNG, SVG).
+ */
 import * as React from "react";
 
 export type ExportFormat = "json" | "png" | "svg";

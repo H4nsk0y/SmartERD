@@ -5,8 +5,8 @@
     "useDefineForClassFields": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-
-    "types": ["vite/client", "vitest"],
+    "types": ["vite/client", "vitest/globals", "node"],
+    
 
     "skipLibCheck": true,
 
@@ -24,5 +24,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src", "cucumber.mjs"]
 }

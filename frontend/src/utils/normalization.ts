@@ -57,10 +57,6 @@ function baseNoIndex(n: string) {
   return m ? m[1] : s;
 }
 
-function isIdCol(name: string) {
-  return /_id$/i.test(sanitize(name));
-}
-
 function splitFkRoot(col: string): string | null {
   const m = sanitize(col).match(/^(.+)_id$/i);
   return m ? m[1] : null;
@@ -68,14 +64,8 @@ function splitFkRoot(col: string): string | null {
 
 function findEntityByRootName(entities: Entity[], rootSnake: string): Entity | null {
   const wanted = (rootSnake || "").toLowerCase();
+  if (!wanted) return null;
   return entities.find((en) => rootOfEntityName(en.name) === wanted) || null;
-}
-
-function countIdCols(e: Entity) {
-  return e.attributes
-    .filter((a) => isIdCol(a.name))
-    .map((a) => sanitize(a.name))
-    .filter(Boolean);
 }
 
 function isLikelyJsonType(t: string) {
@@ -134,12 +124,10 @@ export type NormalizationIssue = ValidationIssue & {
 };
 
 function cloneDeep<T>(v: T): T {
-  // structuredClone не везде гарантирован, JSON тут ок (модель простая)
   return JSON.parse(JSON.stringify(v));
 }
 
 function newId(): string {
-  // browser-safe
   const c: any = typeof crypto !== "undefined" ? crypto : null;
   if (c?.randomUUID) return c.randomUUID();
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -159,6 +147,32 @@ function uniqueEntityName(base: string, entities: Entity[]) {
 function findAttrIndex(entity: Entity, col: string) {
   const want = sanitize(col).toLowerCase();
   return entity.attributes.findIndex((a) => sanitize(a.name).toLowerCase() === want);
+}
+
+function hasAttr(entity: Entity, col: string) {
+  return findAttrIndex(entity, col) >= 0;
+}
+
+/**
+ * Небольшой “умный” rename при переносе:
+ * если переносим course_title в Course — делаем title (а не course_title),
+ * если переносим student_email в Student — делаем email и т.п.
+ */
+function normalizeAttrNameForTarget(col: string, target: Entity): string {
+  const targetRoot = rootOfEntityName(target.name);
+  if (!targetRoot) return sanitize(col);
+
+  const sc = snakeAttr(col);
+  if (!sc.startsWith(`${targetRoot}_`)) return sanitize(col);
+
+  const suffix = sc.slice(targetRoot.length + 1);
+  if (!suffix) return sanitize(col);
+
+  // Только “безопасные” суффиксы (title/email/name/...)
+  if (!GENERIC_TRANSITIVE_SUFFIXES.has(suffix)) return sanitize(col);
+
+  // Ставим suffix (title/email/...)
+  return suffix;
 }
 
 function ensureAttr(entity: Entity, name: string, type: string, isPrimaryKey?: boolean) {
@@ -183,16 +197,18 @@ function removeAttrs(entity: Entity, cols: string[]) {
   entity.attributes = entity.attributes.filter((a) => !drop.has(sanitize(a.name).toLowerCase()));
 }
 
-function hasRelationship(relationships: Relationship[], from: string, to: string, type: Relationship["type"]) {
+function hasRelationship(
+  relationships: Relationship[],
+  from: string,
+  to: string,
+  type: Relationship["type"]
+) {
   return relationships.some((r) => r.from === from && r.to === to && r.type === type);
 }
 
-function ensureOneToManyRel(
-  relationships: Relationship[],
-  fromId: string,
-  toId: string,
-  fkColumn: string
-) {
+function ensureOneToManyRel(relationships: Relationship[], fromId: string, toId: string, fkColumn: string) {
+  //   защитимся от “самоссылки”
+  if (fromId === toId) return;
   if (hasRelationship(relationships, fromId, toId, "one-to-many")) return;
 
   relationships.push({
@@ -209,6 +225,17 @@ function ensureOneToManyRel(
   });
 }
 
+function removeOneToManyRel(relationships: Relationship[], fromId: string, toId: string, fkColumn?: string) {
+  const fkWant = fkColumn ? sanitize(fkColumn).toLowerCase() : null;
+  return relationships.filter((r) => {
+    if (r.type !== "one-to-many") return true;
+    if (r.from !== fromId || r.to !== toId) return true;
+    if (!fkWant) return false; // удалить все matching from->to
+    const col = sanitize(r.fk?.column || "").toLowerCase();
+    return col !== fkWant; // удалить только если совпал fk
+  });
+}
+
 /**
  * Применение одного action к модели (immutably).
  * Возвращает { entities, relationships } готовое для setDiagramData(...)
@@ -219,7 +246,7 @@ export function applyNormalizationAction(
   relationships: Relationship[]
 ): { entities: Entity[]; relationships: Relationship[] } {
   const es = cloneDeep(entities);
-  const rs = cloneDeep(relationships);
+  let rs = cloneDeep(relationships);
 
   const entById = new Map(es.map((e) => [e.id, e] as const));
 
@@ -239,7 +266,6 @@ export function applyNormalizationAction(
       const srcRoot = rootOfEntityName(src.name);
       const fkName = fkCol(srcRoot, srcPk.name);
 
-      // тип значения: первый не пустой тип из группы
       const groupTypes = columns
         .map((c) => src.attributes.find((a) => sanitize(a.name).toLowerCase() === sanitize(c).toLowerCase())?.type)
         .filter((t) => !!t) as string[];
@@ -256,15 +282,12 @@ export function applyNormalizationAction(
         attributes: [],
       };
 
-      // PK + FK + value + idx
       ensureAttr(child, "id", srcPk.type || "UUID", true);
       ensureAttr(child, fkName, srcPk.type || "UUID");
       ensureAttr(child, snakeAttr(base || "value"), valueType);
       ensureAttr(child, "idx", "INT");
 
       es.push(child);
-
-      // связь: src 1:N child (FK в child)
       ensureOneToManyRel(rs, src.id, child.id, fkName);
 
       if (dropOriginal) {
@@ -336,7 +359,12 @@ export function applyNormalizationAction(
       );
       if (!a) return { entities: es, relationships: rs };
 
-      ensureAttr(to, sanitize(a.name), a.type || "TEXT", false);
+      const targetName = normalizeAttrNameForTarget(sanitize(a.name), to);
+
+      // Если атрибут уже есть — просто удалим из источника (чтобы не плодить дубли)
+      if (!hasAttr(to, targetName)) {
+        ensureAttr(to, targetName, a.type || "TEXT", false);
+      }
 
       if (dropFromSource !== false) {
         removeAttrs(from, [sanitize(a.name)]);
@@ -348,18 +376,22 @@ export function applyNormalizationAction(
     case "FIX_TRANSITIVE_DEP": {
       const { holderEntityId, fkRoot, fkColumn, moveColumn } = action.payload as {
         holderEntityId: string;
-        fkRoot: string; // например "customer"
-        fkColumn: string; // "customer_id"
-        moveColumn: string; // "customer_name"
+        fkRoot: string;
+        fkColumn: string;
+        moveColumn: string;
       };
 
       const holder = entById.get(holderEntityId);
       if (!holder) return { entities: es, relationships: rs };
 
+      const holderRoot = rootOfEntityName(holder.name);
+
       // найти/создать ref entity
       let ref = findEntityByRootName(es, fkRoot);
       if (!ref) {
-        const baseName = sanitize(fkRoot) ? sanitize(fkRoot)[0].toUpperCase() + sanitize(fkRoot).slice(1) : "Ref";
+        const baseName = sanitize(fkRoot)
+          ? sanitize(fkRoot)[0].toUpperCase() + sanitize(fkRoot).slice(1)
+          : "Ref";
         const refName = uniqueEntityName(baseName, es);
 
         ref = {
@@ -370,7 +402,6 @@ export function applyNormalizationAction(
           attributes: [],
         };
 
-        // pk типа из fk-колонки (если есть), иначе UUID
         const fkAttr = holder.attributes.find(
           (a) => sanitize(a.name).toLowerCase() === sanitize(fkColumn).toLowerCase()
         );
@@ -382,24 +413,34 @@ export function applyNormalizationAction(
         entById.set(ref.id, ref);
       }
 
-      // перенести поле
+      // перенести поле (или в self-case просто удалить)
       const srcAttr = holder.attributes.find(
         (a) => sanitize(a.name).toLowerCase() === sanitize(moveColumn).toLowerCase()
       );
+
       if (srcAttr) {
-        const suffix = snakeAttr(moveColumn).startsWith(`${fkRoot}_`)
-          ? snakeAttr(moveColumn).slice(fkRoot.length + 1)
-          : sanitize(moveColumn);
+        // Если ref == holder (self), то не переносим “в себя”, просто удаляем дубль
+        const isSelf = ref.id === holder.id;
 
-        // целевое имя: если было customer_name -> name (если это безопасно), иначе оставляем как есть
-        const targetName = suffix && GENERIC_TRANSITIVE_SUFFIXES.has(suffix) ? suffix : sanitize(srcAttr.name);
+        if (!isSelf) {
+          const suffix = snakeAttr(moveColumn).startsWith(`${fkRoot}_`)
+            ? snakeAttr(moveColumn).slice(fkRoot.length + 1)
+            : sanitize(moveColumn);
 
-        ensureAttr(ref, targetName, srcAttr.type || "TEXT", false);
+          const targetName =
+            suffix && GENERIC_TRANSITIVE_SUFFIXES.has(suffix) ? suffix : sanitize(srcAttr.name);
+
+          ensureAttr(ref, targetName, srcAttr.type || "TEXT", false);
+        }
+
         removeAttrs(holder, [srcAttr.name]);
       }
 
       // убедиться в связи ref 1:N holder по fkColumn
-      ensureOneToManyRel(rs, ref.id, holder.id, fkColumn);
+      //   если это self-case — связь не добавляем
+      if (ref.id !== holder.id) {
+        ensureOneToManyRel(rs, ref.id, holder.id, fkColumn);
+      }
 
       // убедиться, что FK-атрибут есть (если вдруг отсутствует)
       const fkIdx = findAttrIndex(holder, fkColumn);
@@ -408,21 +449,33 @@ export function applyNormalizationAction(
         ensureAttr(holder, fkColumn, refPk.type || "UUID");
       }
 
+      // маленький хак: если “fkRoot == holderRoot” (например course_id в Course),
+      // мы НЕ создаём self-link, но удаление дубля всё равно полезно.
+      void holderRoot;
+
       return { entities: es, relationships: rs };
     }
 
     case "ADD_MISSING_FK_REL": {
       const { holderEntityId, fkRoot } = action.payload as {
         holderEntityId: string;
-        fkRoot: string; // "customer"
+        fkRoot: string;
       };
 
       const holder = entById.get(holderEntityId);
       if (!holder) return { entities: es, relationships: rs };
 
+      //   не делаем self FK по одной лишь эвристике
+      const holderRoot = rootOfEntityName(holder.name);
+      if (snakeAttr(fkRoot) && snakeAttr(fkRoot) === holderRoot) {
+        return { entities: es, relationships: rs };
+      }
+
       let ref = findEntityByRootName(es, fkRoot);
       if (!ref) {
-        const baseName = sanitize(fkRoot) ? sanitize(fkRoot)[0].toUpperCase() + sanitize(fkRoot).slice(1) : "Ref";
+        const baseName = sanitize(fkRoot)
+          ? sanitize(fkRoot)[0].toUpperCase() + sanitize(fkRoot).slice(1)
+          : "Ref";
         const refName = uniqueEntityName(baseName, es);
 
         ref = {
@@ -438,10 +491,13 @@ export function applyNormalizationAction(
       }
 
       const refPk = getPrimaryKey(ref);
-      const fkColumn = `${snakeAttr(fkRoot)}_${snakeAttr(refPk.name)}`; // обычно customer_id
+      const fkColumn = `${snakeAttr(fkRoot)}_${snakeAttr(refPk.name)}`;
       ensureAttr(holder, fkColumn, refPk.type || "UUID");
 
-      ensureOneToManyRel(rs, ref.id, holder.id, fkColumn);
+      //   не создаём self-link
+      if (ref.id !== holder.id) {
+        ensureOneToManyRel(rs, ref.id, holder.id, fkColumn);
+      }
 
       return { entities: es, relationships: rs };
     }
@@ -459,6 +515,9 @@ export function applyNormalizationAction(
       const left = entById.get(leftEntityId);
       const right = entById.get(rightEntityId);
       if (!link || !left || !right) return { entities: es, relationships: rs };
+
+      //   бессмысленно делать M:N самой с собой
+      if (left.id === right.id) return { entities: es, relationships: rs };
 
       // уже есть M:N?
       const exists = rs.some(
@@ -483,6 +542,10 @@ export function applyNormalizationAction(
         },
       });
 
+      //чистим лишние 1:N, если они появились от других авто-фиксов
+      rs = removeOneToManyRel(rs, left.id, link.id, leftFk);
+      rs = removeOneToManyRel(rs, right.id, link.id, rightFk);
+
       return { entities: es, relationships: rs };
     }
 
@@ -494,12 +557,10 @@ export function applyNormalizationAction(
 /**
  * Нормализационные подсказки (эвристики).
  * Возвращает ValidationIssue[], чтобы можно было показывать тем же UI-виджетом.
- * (Фактически возвращаем NormalizationIssue[], но оно структурно совместимо)
  */
 export function analyzeNormalization(entities: Entity[], relationships: Relationship[]): ValidationIssue[] {
   const issues: NormalizationIssue[] = [];
 
-  // для дедупликации (не спамим одинаковыми подсказками)
   const seen = new Set<string>();
   const push = (i: NormalizationIssue) => {
     const k = `${i.code}|${i.level}|${(i.where ?? []).join(",")}|${i.message}|${i.suggestion ?? ""}`;
@@ -550,7 +611,6 @@ export function analyzeNormalization(entities: Entity[], relationships: Relation
   const mmLinkById = new Map<string, LinkInfo>();
   for (const li of mmLinks) mmLinkById.set(li.link.id, li);
 
-  // чтобы не повторять 3НФ-подсказки там, где уже дали точнее 2НФ в link-таблице
   const suppress3nfForCol = new Set<string>();
 
   // =========================
@@ -575,7 +635,6 @@ export function analyzeNormalization(entities: Entity[], relationships: Relation
         const n = parseInt(m[2] ?? "0", 10);
         if (!base || !Number.isFinite(n)) continue;
 
-        // уменьшаем ложные срабатывания (year2024 и т.п.)
         if (n <= 0 || n > 50) continue;
         if (base.toLowerCase().endsWith("_id")) continue;
 
@@ -759,37 +818,6 @@ export function analyzeNormalization(entities: Entity[], relationships: Relation
         ],
       });
     }
-
-    // Доп: 3НФ в link-таблице (групповая)
-    const leftHasFk = cols.some((c) => c.toLowerCase() === leftFk.toLowerCase());
-    const rightHasFk = cols.some((c) => c.toLowerCase() === rightFk.toLowerCase());
-    if (leftHasFk && rightHasFk) {
-      const leftoverLeft = nonKey.filter(
-        (c) => snakeAttr(c).startsWith(`${li.leftRoot}_`) && !partialLeft.includes(c)
-      );
-      const leftoverRight = nonKey.filter(
-        (c) => snakeAttr(c).startsWith(`${li.rightRoot}_`) && !partialRight.includes(c)
-      );
-
-      if (leftoverLeft.length > 0) {
-        push({
-          level: "info",
-          code: "NF3_TRANSITIVE_DEP",
-          message: `«${e.name}»: рядом с «${leftFk}» есть поля ${leftoverLeft.join(", ")} — ${NF_WORDS.transitive}`,
-          where: [e.id],
-          suggestion: `Обычно достаточно хранить «${leftFk}», а остальные поля получать через JOIN (вынесите в «${li.left.name}»).`,
-        });
-      }
-      if (leftoverRight.length > 0) {
-        push({
-          level: "info",
-          code: "NF3_TRANSITIVE_DEP",
-          message: `«${e.name}»: рядом с «${rightFk}» есть поля ${leftoverRight.join(", ")} — ${NF_WORDS.transitive}`,
-          where: [e.id],
-          suggestion: `Обычно достаточно хранить «${rightFk}», а остальные поля получать через JOIN (вынесите в «${li.right.name}»).`,
-        });
-      }
-    }
   }
 
   // =========================
@@ -797,6 +825,8 @@ export function analyzeNormalization(entities: Entity[], relationships: Relation
   // =========================
   for (const e of entities) {
     if (!e.attributes || e.attributes.length === 0) continue;
+
+    const eRoot = rootOfEntityName(e.name);
 
     const cols = e.attributes.map((a) => sanitize(a.name)).filter(Boolean);
     const colsLower = new Set(cols.map((c) => c.toLowerCase()));
@@ -810,7 +840,6 @@ export function analyzeNormalization(entities: Entity[], relationships: Relation
       const fkName = `${rootSnake}_id`;
       if (!colsLower.has(fkName.toLowerCase())) continue;
 
-      // ищем кандидаты root_*
       for (const c2 of cols) {
         const sc2 = snakeAttr(c2);
         if (!sc2.startsWith(`${rootSnake}_`)) continue;
@@ -822,10 +851,16 @@ export function analyzeNormalization(entities: Entity[], relationships: Relation
         const suffix = sc2.slice(rootSnake.length + 1);
         if (!suffix) continue;
 
-        // ВАЖНО: теперь предупреждаем даже если сущности root нет (тогда в подсказке будет "создайте сущность")
         if (GENERIC_TRANSITIVE_SUFFIXES.has(suffix)) {
           const refEnt = entByRoot.get(rootSnake);
-          const refLabel = refEnt ? ` (вынесите в «${refEnt.name}»).` : " (создайте отдельную сущность и вынесите туда).";
+
+          // если это self-root (например Course.course_id + Course.course_title)
+          const refLabel =
+            refEnt && refEnt.id === e.id
+              ? " (скорее всего это дублирование — значение можно получать через self-JOIN по FK)."
+              : refEnt
+                ? ` (вынесите в «${refEnt.name}»).`
+                : " (создайте отдельную сущность и вынесите туда).";
 
           push({
             level: "warning",
@@ -850,7 +885,7 @@ export function analyzeNormalization(entities: Entity[], relationships: Relation
       }
     }
 
-    // (B) есть root_name/title/email/etc, но нет root_id => возможно пропущен FK
+    // (B) есть root_title/email/etc, но нет root_id => возможно пропущен FK
     {
       const prefixGroups = new Map<string, string[]>();
 
@@ -862,8 +897,10 @@ export function analyzeNormalization(entities: Entity[], relationships: Relation
         const prefix = parts[0];
         const rest = parts.slice(1).join("_");
 
-        // если prefix выглядит как сущность
         if (!entByRoot.has(prefix)) continue;
+
+        //   если prefix совпадает с текущей сущностью — НЕ считаем это “missing FK”
+        if (prefix === eRoot) continue;
 
         if (rest === "id") continue;
         if (rest.endsWith("_id")) continue;
@@ -880,6 +917,9 @@ export function analyzeNormalization(entities: Entity[], relationships: Relation
 
         const ref = entByRoot.get(root);
         if (!ref) continue;
+
+        // не предлагаем self
+        if (ref.id === e.id) continue;
 
         push({
           level: "info",
@@ -901,7 +941,7 @@ export function analyzeNormalization(entities: Entity[], relationships: Relation
   }
 
   // =========================
-  // Доп. эвристика: таблица похожа на связочную (2 FK), но не оформлена как M:N и содержит “чужие” атрибуты
+  // Link-table smell: 2 FK, но не оформлена как M:N и содержит “чужие” атрибуты
   // =========================
   for (const e of entities) {
     if (!e.attributes || e.attributes.length === 0) continue;
@@ -937,7 +977,6 @@ export function analyzeNormalization(entities: Entity[], relationships: Relation
     const uniq = [...new Set(suspicious.map((x) => sanitize(x)).filter(Boolean))];
     if (uniq.length === 0) continue;
 
-    // определим 2 сущности и 2 fk колонки “как есть”
     const [r1, r2] = existingRoots;
     const e1 = entByRoot.get(r1)!;
     const e2 = entByRoot.get(r2)!;

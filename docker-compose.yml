@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: smarterd-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: smarterd
+      POSTGRES_PASSWORD: smarterd_pass
+      POSTGRES_DB: smarterd
+    ports:
+      - "5433:5432"
+    volumes:
+      - smarterd_pgdata:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: smarterd-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  smarterd_pgdata:
+  pgadmin_data:

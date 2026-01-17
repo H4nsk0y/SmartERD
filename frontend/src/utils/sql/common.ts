@@ -31,8 +31,8 @@ export function toSingular(name: string): string {
 
 /*Имя FK-колонки*/
 export function fkColNameFor(rootSingular: string, pkName: string) {
-  const base = snake(pkName);          
-  const root = snake(rootSingular) + "_"; 
+  const base = snake(pkName);
+  const root = snake(rootSingular) + "_";
   return base.startsWith(root) ? base : `${snake(rootSingular)}_${base}`;
 }
 
@@ -95,9 +95,47 @@ export function findExistingLinkEntity(a: Entity, b: Entity, all: Entity[]): Ent
   return null;
 }
 
+/** Нормализация типа для сравнения */
+function normType(t: string) {
+  return (t || "").replace(/\s+/g, "").toUpperCase();
+}
+
+/** Является ли тип “похожим на PK” по твоему ТЗ: UUID или INT (и близкие варианты) */
+function isPkType(t?: string) {
+  const u = normType(t || "");
+  if (!u) return false;
+  if (u === "UUID") return true;
+  if (u === "INT" || u === "INTEGER") return true;
+  if (u.endsWith("INT")) return true; // BIGINT, SMALLINT
+  if (u.includes("SERIAL")) return true; // SERIAL/BIGSERIAL
+  return false;
+}
+
+/** Пытаемся угадать PK, если пользователь не поставил 🔑 */
+function inferImplicitPk(entity: Entity): { name: string; type: string } | null {
+  const root = snake(toSingular(sanitize(entity.name || "")));
+
+  // Приоритет: id -> <entity>_id
+  const candidates = ["id", root ? `${root}_id` : ""].filter(Boolean);
+
+  for (const want of candidates) {
+    const hit = entity.attributes.find((a) => snake(sanitize(a.name)) === want);
+    if (hit && isPkType(hit.type)) {
+      return { name: sanitize(hit.name), type: (hit.type || "").trim() || "UUID" };
+    }
+  }
+
+  return null;
+}
+
 export function getPrimaryKey(entity: Entity) {
   const explicit = entity.attributes.find((a) => (a as any).isPrimaryKey);
-  if (explicit) return { name: sanitize(explicit.name), type: explicit.type || "UUID" };
+ if (explicit) return { name: sanitize(explicit.name), type: (explicit.type || "").trim() || "UUID" };
+
+  // если есть id / <entity>_id с типом INT/UUID — используем это как PK
+  const implicit = inferImplicitPk(entity);
+  if (implicit) return implicit;
+
   // дефолтный тип PK — UUID
   return { name: "id", type: "UUID" };
 }
