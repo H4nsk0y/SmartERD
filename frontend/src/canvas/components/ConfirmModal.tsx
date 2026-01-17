@@ -1,3 +1,8 @@
+// frontend/src/canvas/components/ConfirmModal.tsx
+/**
+ * canvas/components/ConfirmModal
+ * Модальное окно подтверждения действия.
+ */
 import React from "react";
 import { createPortal } from "react-dom";
 

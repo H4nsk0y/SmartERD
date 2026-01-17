@@ -1,4 +1,9 @@
-import React, { useState } from "react";
+// frontend/src/canvas/components/AIPanel.tsx
+/**
+ * canvas/components/AIPanel
+ * Панель AI-помощника: чат и генерация ER.
+ */
+import { useState } from "react";
 import { aiChat, aiGenerateER, type ChatMessage } from "../../api/ai";
 import { useERStore } from "../../store/useERStore";
 

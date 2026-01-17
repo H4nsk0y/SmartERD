@@ -1,5 +1,4 @@
-import * as React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import {
   sql as sqlLang,
@@ -11,6 +10,10 @@ import {
 } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
 import type { SqlDialect } from "../../utils/sql/types";
+
+function storageKeyFor(d: SqlDialect) {
+  return `sqlpanel:draft:${d}`;
+}
 
 export default function SQLPanel({
   sql,
@@ -31,19 +34,89 @@ export default function SQLPanel({
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [value, setValue] = useState<string>(sql ?? "");
 
+  const key = storageKeyFor(dialect);
+
+  // ✅ восстанавливаем черновик (на случай ремоунта)
+  const [value, setValue] = useState<string>(() => {
+    try {
+      const saved = sessionStorage.getItem(key);
+      if (saved != null) return saved;
+    } catch {
+      // ignore
+    }
+    return sql ?? "";
+  });
+
+  const [dirty, setDirty] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(key) != null;
+    } catch {
+      return false;
+    }
+  });
+
+  const isDark = useIsDarkMode();
+
+  const lastPropSqlRef = useRef<string>(sql ?? "");
+  const prevDialectRef = useRef<SqlDialect>(dialect);
+
+  // ✅ сохраняем/чистим черновик
   useEffect(() => {
-    setValue(sql ?? "");
-  }, [sql]);
+    try {
+      if (!dirty) {
+        sessionStorage.removeItem(key);
+        return;
+      }
+      sessionStorage.setItem(key, value);
+    } catch {
+      // ignore
+    }
+  }, [dirty, value, key]);
+
+  // ✅ если пришёл новый sql от генератора:
+  // - пока юзер НЕ редактировал (dirty=false) — обновляем редактор
+  // - если dirty=true — НЕ трогаем value (иначе “откат”)
+  // - при смене диалекта — подхватываем либо черновик для диалекта, либо prop sql
+  useEffect(() => {
+    const nextSql = sql ?? "";
+    const dialectChanged = prevDialectRef.current !== dialect;
+
+    prevDialectRef.current = dialect;
+
+    if (dialectChanged) {
+      // При смене диалекта: если есть сохранённый черновик — он важнее
+      try {
+        const saved = sessionStorage.getItem(key);
+        if (saved != null) {
+          setValue(saved);
+          setDirty(true);
+          lastPropSqlRef.current = nextSql;
+          return;
+        }
+      } catch {
+        // ignore
+      }
+
+      setValue(nextSql);
+      setDirty(false);
+      lastPropSqlRef.current = nextSql;
+      return;
+    }
+
+    // Обычное обновление sql пропа
+    lastPropSqlRef.current = nextSql;
+
+    if (!dirty) {
+      setValue(nextSql);
+    }
+  }, [sql, dialect, dirty, key]);
 
   useEffect(() => {
     if (!copied) return;
     const t = setTimeout(() => setCopied(false), 1200);
     return () => clearTimeout(t);
   }, [copied]);
-
-  const isDark = useIsDarkMode();
 
   const cmDialect: CmSqlDialect = useMemo(() => {
     switch (dialect) {
@@ -63,7 +136,9 @@ export default function SQLPanel({
   const extensions = useMemo(() => [sqlLang({ dialect: cmDialect })], [cmDialect]);
 
   const handleChange = (next: string) => {
+    if (!editable) return;
     setValue(next);
+    setDirty(true);
     onChangeSql?.(next);
   };
 
@@ -75,6 +150,13 @@ export default function SQLPanel({
     } catch {
       // ignore
     }
+  };
+
+  const handleResetToGenerated = () => {
+    const next = lastPropSqlRef.current ?? "";
+    setValue(next);
+    setDirty(false);
+    onChangeSql?.(next);
   };
 
   return (
@@ -114,6 +196,17 @@ export default function SQLPanel({
             </div>
           )}
         </div>
+
+        {dirty && (
+          <button
+            onClick={handleResetToGenerated}
+            className="px-3 py-1.5 rounded-md text-sm bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/30 dark:hover:bg-amber-900/45 text-amber-900 dark:text-amber-100 transition-colors"
+            title="Сбросить к сгенерированному SQL"
+          >
+            Отменить
+          </button>
+        )}
+
         <button
           onClick={handleCopy}
           className="ml-auto px-3 py-1.5 rounded-md text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
@@ -122,6 +215,7 @@ export default function SQLPanel({
           {copied ? "Скопировано ✓" : "Скопировать"}
         </button>
       </div>
+
       <div className="h-0 flex-1 min-h-0 overflow-hidden">
         <CodeMirror
           value={value}
@@ -161,9 +255,7 @@ function labelOf(d: SqlDialect) {
 
 function useIsDarkMode() {
   const [dark, setDark] = useState<boolean>(() =>
-    typeof document !== "undefined"
-      ? document.documentElement.classList.contains("dark")
-      : false
+    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false
   );
   useEffect(() => {
     const mo = new MutationObserver(() =>

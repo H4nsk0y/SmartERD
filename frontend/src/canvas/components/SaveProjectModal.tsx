@@ -38,7 +38,6 @@ export default function SaveProjectModal({
               Сохранить проект
             </div>
             <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Пока без БД: сохраняем “проект” локально (заготовка под личный кабинет).
             </div>
           </div>
 
@@ -57,6 +56,7 @@ export default function SaveProjectModal({
             Название проекта
           </label>
           <input
+            data-testid="project-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -73,6 +73,7 @@ export default function SaveProjectModal({
           </button>
 
           <button
+            data-testid="project-create"
             disabled={!safe}
             className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => onConfirm(safe)}

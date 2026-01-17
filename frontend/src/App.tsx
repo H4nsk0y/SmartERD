@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { Routes, Route, Link, Navigate } from "react-router-dom";
 import { useAppStore } from "./store/useAppStore";
 import { useTranslation } from "react-i18next";
@@ -62,6 +62,7 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/editor" element={<EditorPage />} />
+          <Route path="/editor/:projectId" element={<EditorPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/ai" element={<AIPage />} />
           <Route path="/kb" element={<KnowledgeBasePage />} />

@@ -4,7 +4,8 @@ import { generatePostgresSQL } from "./sql/postgres";
 import { generateMySQLSQL } from "./sql/mysql";
 import { generateSQLiteSQL } from "./sql/sqlite";
 import { generateMSSQLSQL } from "./sql/mssql";
-import type { SqlDialect, GenerateOptions } from "./sql/types";
+import type { GenerateOptions } from "./sql/types";
+
 
 export function generateSQL(
   entities: Entity[],

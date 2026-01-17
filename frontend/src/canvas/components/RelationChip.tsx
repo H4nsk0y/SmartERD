@@ -2,7 +2,7 @@
 /**
  * RelationChip — компактный чип выбора типа связи с мини-меню.
  */
-import React from "react";
+
 
 export type RelationKind = "one-to-one" | "one-to-many" | "many-to-many";
 

@@ -1,3 +1,4 @@
+// frontend/src/utils/sql/postgres.ts
 import type { Entity, Relationship, FKMeta, LinkMeta } from "../../store/useERStore";
 import {
   sanitize,
@@ -14,14 +15,32 @@ import {
   limitIdentifier,
 } from "./common";
 
-type MMPair = {
-  from: Entity;
-  to: Entity;
-  fromName: string;
-  toName: string;
-  fromSingular: string;
-  toSingular: string;
-};
+function ensureDistinctCols(left: string, right: string) {
+  const L = left;
+  let R = right;
+
+  if (L.toLowerCase() !== R.toLowerCase()) return { left: L, right: R };
+
+  // если совпали — делаем правую колонку отличной
+  const base = right || left || "ref_id";
+  R = `${base}_2`;
+
+  if (L.toLowerCase() === R.toLowerCase()) {
+    R = `${base}_r`;
+  }
+
+  return { left: L, right: R };
+}
+
+/**
+ * FK type resolution rule:
+ * 1) если fkMeta.type задан и НЕ пустой -> используем его
+ * 2) иначе -> используем тип PK у referenced сущности (fromPK.type)
+ */
+function resolveFkType(fkMeta: FKMeta, referencedPkType: string): string {
+  const t = (fkMeta.type ?? "").trim();
+  return t || (referencedPkType || "UUID");
+}
 
 export function generatePostgresSQL(entities: Entity[], relationships: Relationship[]): string {
   const sqlParts: string[] = [];
@@ -30,23 +49,6 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
   const usedTableNames = new Set(entities.map((e) => sanitize(e.name).toLowerCase()));
   const linkSqlNameByEntityId = new Map<string, string>();
   const linkSqlNameByPair = new Map<string, string>();
-
-  const mmPairs: MMPair[] = relationships
-    .filter((r) => r.type === "many-to-many")
-    .map((r) => {
-      const from = entById.get(r.from);
-      const to = entById.get(r.to);
-      if (!from || !to) return null;
-      return {
-        from,
-        to,
-        fromName: sanitize(from.name),
-        toName: sanitize(to.name),
-        fromSingular: toSingular(sanitize(from.name)),
-        toSingular: toSingular(sanitize(to.name)),
-      };
-    })
-    .filter(Boolean) as MMPair[];
 
   const linkEntityIds = new Set<string>();
   const linkEntityByPair = new Map<string, Entity | null>();
@@ -64,14 +66,11 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
     const suggestedBase = suggestLinkTableName(from.name, to.name);
     const explicit = findExistingLinkEntity(from, to, entities);
 
-    if (explicit) {
-      linkEntityIds.add(explicit.id);
-    }
+    if (explicit) linkEntityIds.add(explicit.id);
     linkEntityByPair.set(key, explicit);
 
     let chosen = suggestedBase;
 
-    // Пользовательский override
     if (r.link?.tableName) {
       chosen = sanitize(r.link.tableName);
     } else if (explicit) {
@@ -87,7 +86,7 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
     if (explicit) linkSqlNameByEntityId.set(explicit.id, chosen);
   }
 
-  const deferredLinkTables = new Set<string>();
+  const deferredLinkTables = new Set<string>(); // lower-case sql name
   const involved = new Set<string>();
   for (const r of relationships) {
     if (entById.has(r.from)) involved.add(r.from);
@@ -105,12 +104,10 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
 
     const T = qPg(sqlTableName);
 
-    // если пустая и не участвует — пропускаем
     if (e.attributes.length === 0 && !involved.has(e.id) && !isExplicitLink) continue;
 
-    // явная link-таблица без колонок — отложим (и ВАЖНО: под финальным SQL-именем)
     if (isExplicitLink && e.attributes.length === 0) {
-      deferredLinkTables.add(sqlTableName);
+      deferredLinkTables.add(sqlTableName.toLowerCase());
       continue;
     }
 
@@ -139,15 +136,18 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
 
     const fromName = sanitize(from.name);
     const toName = sanitize(to.name);
-    const F = qPg(fromName);
-    const T = qPg(toName);
 
     const fromPK = getPrimaryKey(from);
     const toPK = getPrimaryKey(to);
     const fromPKName = sanitize(fromPK.name);
     const toPKName = sanitize(toPK.name);
+
     const fromSingular = toSingular(fromName);
     const toSingularName = toSingular(toName);
+
+    // ВАЖНО: таблицы в SQL (для обычных сущностей совпадают с sanitize(name))
+    const F = qPg(fromName);
+    const T = qPg(toName);
 
     switch (r.type) {
       case "one-to-one":
@@ -161,8 +161,15 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
           ...(r.fk ?? {}),
         };
 
-        const computedName = fkColNameFor(fromSingular, fromPKName);
+        const isSelf = r.from === r.to;
+
+        // self-loop: parent_<pk> (например parent_id)
+        const computedName = isSelf
+          ? sanitize(`parent_${snake(fromPKName)}`)
+          : fkColNameFor(fromSingular, fromPKName);
+
         const suggestedExisting = findExistingFKColumn(to, fromName, fromSingular, fromPKName);
+
         const requestedName =
           (fkMeta.column && fkMeta.column.trim()) ||
           suggestedExisting ||
@@ -170,7 +177,9 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
 
         const fkColName = sanitize(requestedName);
         const fkColQ = qPg(fkColName);
-        const fkType = fkMeta.type ?? fromPK.type;
+
+        // ✅ FIX: тип FK вычисляем ВСЕГДА, независимо от notNull
+        const fkType = resolveFkType(fkMeta, fromPK.type);
 
         const existsExact = hasColumn(to, fkColName);
 
@@ -179,6 +188,7 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
             sqlParts.push(`ALTER TABLE ${T}\n  ALTER COLUMN ${fkColQ} SET NOT NULL;`);
           }
         } else {
+          // ✅ FIX: ADD COLUMN всегда с типом; NOT NULL только если notNull=true
           sqlParts.push(
             `ALTER TABLE ${T}\n  ADD COLUMN ${fkColQ} ${fkType}${fkMeta.notNull === false ? "" : " NOT NULL"};`
           );
@@ -189,8 +199,10 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
           fkMeta.onUpdate ? ` ON UPDATE ${fkMeta.onUpdate}` : "",
         ].join("");
 
-        const fkName = qPg(limitIdentifier(`fk_${toName}_${fromName}`, 63));
+        // ✅ имя FK-констрейнта привязано к FK-колонке (лучше для self-loop и потенциальных коллизий)
+        const fkName = qPg(limitIdentifier(`fk_${toName}_${fkColName}`, 63));
         const pkQ = qPg(fromPKName);
+
         sqlParts.push(
           `ALTER TABLE ${T}\n  ADD CONSTRAINT ${fkName} FOREIGN KEY (${fkColQ}) REFERENCES ${F}(${pkQ})${actions};`
         );
@@ -220,27 +232,35 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
         const key = `${from.id}__${to.id}`;
         const explicitEntity = linkEntityByPair.get(key);
 
-        const leftCol = sanitize(linkMeta.leftColumn ?? fkColNameFor(fromSingular, fromPKName));
-        const rightCol = sanitize(linkMeta.rightColumn ?? fkColNameFor(toSingularName, toPKName));
-
-        const leftQ = qPg(leftCol);
-        const rightQ = qPg(rightCol);
-
         const autoName = suggestLinkTableName(fromName, toName);
         const linkName = linkSqlNameByPair.get(key) ?? sanitize(linkMeta.tableName ?? autoName);
         const L = qPg(linkName);
+
+        // колонки
+        const leftBase = sanitize(linkMeta.leftColumn ?? fkColNameFor(fromSingular, fromPKName));
+        const rightBase = sanitize(linkMeta.rightColumn ?? fkColNameFor(toSingularName, toPKName));
+
+        // ✅ self N:M: если совпали — разруливаем автоматически
+        const distinct = ensureDistinctCols(leftBase, rightBase);
+        const leftCol = sanitize(distinct.left);
+        const rightCol = sanitize(distinct.right);
+
+        const leftQ = qPg(leftCol);
+        const rightQ = qPg(rightCol);
 
         const actions = [
           linkMeta.onDelete ? ` ON DELETE ${linkMeta.onDelete}` : "",
           linkMeta.onUpdate ? ` ON UPDATE ${linkMeta.onUpdate}` : "",
         ].join("");
 
-        const wasDeferred = deferredLinkTables.has(linkName);
+        const wasDeferred = deferredLinkTables.has(linkName.toLowerCase());
         const explicitHasPK =
           explicitEntity?.attributes?.some((a) => (a as any).isPrimaryKey) ?? false;
 
-        const fkLName = qPg(limitIdentifier(`fk_${linkName}_${fromName}`, 63));
-        const fkRName = qPg(limitIdentifier(`fk_${linkName}_${toName}`, 63));
+        // ✅ FK-констрейнты привязываем к именам колонок — так self N:M не коллизится
+        const fkLName = qPg(limitIdentifier(`fk_${linkName}_${leftCol}`, 63));
+        const fkRName = qPg(limitIdentifier(`fk_${linkName}_${rightCol}`, 63));
+
         const pkFromQ = qPg(fromPKName);
         const pkToQ = qPg(toPKName);
 
@@ -277,7 +297,7 @@ export function generatePostgresSQL(entities: Entity[], relationships: Relations
               sqlParts.push(`ALTER TABLE ${L}\n  ADD PRIMARY KEY (${leftQ}, ${rightQ});`);
             }
             if (linkMeta.compositePrimaryKey === false) {
-             const uq = qPg(limitIdentifier(`uq_${linkName}_${leftCol}_${rightCol}`, 63));
+              const uq = qPg(limitIdentifier(`uq_${linkName}_${leftCol}_${rightCol}`, 63));
               sqlParts.push(`ALTER TABLE ${L}\n  ADD CONSTRAINT ${uq} UNIQUE (${leftQ}, ${rightQ});`);
             }
 

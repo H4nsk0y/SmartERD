@@ -38,31 +38,31 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
   const linkSqlNameByPair = new Map<string, string>();
 
   /* ==== Подготовка N:M ==== */
-  type MMPair = {
-    from: Entity;
-    to: Entity;
-    fromName: string;
-    toName: string;
-    fromSingular: string;
-    toSingular: string;
-  };
+  // type MMPair = {
+  //   from: Entity;
+  //   to: Entity;
+  //   fromName: string;
+  //   toName: string;
+  //   fromSingular: string;
+  //   toSingular: string;
+  // };
 
-  const mmPairs: MMPair[] = relationships
-    .filter((r) => r.type === "many-to-many")
-    .map((r) => {
-      const from = entById.get(r.from);
-      const to = entById.get(r.to);
-      if (!from || !to) return null;
-      return {
-        from,
-        to,
-        fromName: sanitize(from.name),
-        toName: sanitize(to.name),
-        fromSingular: toSingular(sanitize(from.name)),
-        toSingular: toSingular(sanitize(to.name)),
-      };
-    })
-    .filter(Boolean) as MMPair[];
+  // const mmPairs: MMPair[] = relationships
+  //   .filter((r) => r.type === "many-to-many")
+  //   .map((r) => {
+  //     const from = entById.get(r.from);
+  //     const to = entById.get(r.to);
+  //     if (!from || !to) return null;
+  //     return {
+  //       from,
+  //       to,
+  //       fromName: sanitize(from.name),
+  //       toName: sanitize(to.name),
+  //       fromSingular: toSingular(sanitize(from.name)),
+  //       toSingular: toSingular(sanitize(to.name)),
+  //     };
+  //   })
+  //   .filter(Boolean) as MMPair[];
 
   const linkEntityIds = new Set<string>();
   const linkEntityByPair = new Map<string, Entity | null>();
@@ -184,7 +184,8 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
 
         const fkCol = sanitize(requestedName);
         const fkColQ = qMy(fkCol);
-        const fkType = mapTypeToMySQL(fkMeta.type ?? fromPK.type);
+        const fkTypeRaw = (fkMeta.type ?? "").trim() || fromPK.type;
+        const fkType = mapTypeToMySQL(fkTypeRaw);
 
         const existsExact = hasColumn(to, fkCol);
         if (existsExact) {

@@ -169,16 +169,30 @@ export default function ValidationHints({
                     )}
 
                     {i.where && i.where.length > 0 && onJump && (
-                      <div className="mt-2">
-                        <button
-                          type="button"
-                          onClick={() => onJump(i.where!)}
-                          className="text-xs px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
-                        >
-                          Показать на диаграмме
-                        </button>
-                      </div>
-                    )}
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onJump(i.where!);
+                            }}
+                            className={[
+                              "inline-flex items-center gap-1",
+                              "text-xs font-medium px-2.5 py-1.5 rounded-md",
+                              "transition shadow-sm",
+                              "focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2",
+                              "ring-offset-white dark:ring-offset-gray-900",
+                            // light
+                            "bg-blue-800 hover:bg-blue-900 text-white",
+                            // dark (контрастнее + рамка)
+                            "dark:bg-blue-700 dark:hover:bg-blue-600 dark:text-white dark:border dark:border-blue-500/50",
+                            ].join(" ")}
+                          >
+                            <span aria-hidden></span>
+                            Показать на диаграмме
+                          </button>
+                        </div>
+                      )}
                   </div>
                 </div>
               );

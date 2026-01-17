@@ -14,7 +14,7 @@ import {
   limitIdentifier,
 } from "./common";
 
-type Action = "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
+//type Action = "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
 
 function qMs(name: string) {
   return `[${sanitize(name)}]`;
@@ -159,7 +159,8 @@ export function generateMSSQLSQL(entities: Entity[], relationships: Relationship
 
         const fkCol = sanitize(requestedName);
         const fkColQ = qMs(fkCol);
-        const fkType = mapTypeToMSSQL(fkMeta.type ?? fromPK.type);
+        const fkTypeRaw = (fkMeta.type ?? "").trim() || fromPK.type;
+        const fkType = mapTypeToMSSQL(fkTypeRaw);
 
         const existsExact = hasColumn(to, fkCol);
 

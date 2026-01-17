@@ -280,7 +280,8 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
         (fkMeta.column && fkMeta.column.trim()) || suggestedExisting || computedName;
 
       const fkCol = sanitize(requestedName);
-      const fkType = mapTypeToSQLite(fkMeta.type ?? fromPK.type);
+      const fkTypeRaw = (fkMeta.type ?? "").trim() || fromPK.type;
+      const fkType = mapTypeToSQLite(fkTypeRaw);
 
       if (!hasColumn(to, fkCol)) {
         ensureCol(toDef, fkCol, fkType, { notNull: fkMeta.notNull !== false });

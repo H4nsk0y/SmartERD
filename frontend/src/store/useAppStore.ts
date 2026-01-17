@@ -43,7 +43,7 @@ const defaults: Pick<
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       ...defaults,
 
       setLanguage: (lang) => set({ language: lang }),

@@ -16,7 +16,11 @@
     "bdd:watch": "npm run bdd -- --watch",
     "bdd:fast": "cross-env TS_NODE_PROJECT=tsconfig.cucumber.json NODE_OPTIONS=--loader=ts-node/esm cucumber-js --config cucumber.mjs --tags \"not @load\"",
     "bdd:load": "cross-env TS_NODE_PROJECT=tsconfig.cucumber.json NODE_OPTIONS=--loader=ts-node/esm cucumber-js --config cucumber.mjs --tags \"@load\"",
-    "report:plots": "node tools/plot_perf.mjs"
+    "report:plots": "node tools/plot_perf.mjs",
+    "bench": "vitest run --config vitest.bench.config.ts",
+    "e2e": "playwright test",
+    "e2e:report": "playwright show-report"
+    
   },
   "dependencies": {
     "@codemirror/lang-sql": "^6.10.0",
@@ -35,9 +39,10 @@
     "@eslint/js": "^9.36.0",
     "@jazzer.js/core": "^2.1.0",
     "@jazzer.js/fuzzer": "^2.1.0",
+    "@playwright/test": "^1.57.0",
     "@stryker-mutator/core": "^9.4.0",
     "@stryker-mutator/typescript-checker": "^9.4.0",
-    "@types/node": "^24.10.1",
+    "@types/node": "^24.10.7",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",
