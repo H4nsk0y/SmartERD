@@ -65,11 +65,11 @@ describe("sql/common.ts — columns & FK helpers", () => {
 
   it("findExistingFKColumn: находит подходящий FK по наборам кандидатов", () => {
     const user = ent("User", [attr("id", "UUID", true)]);
-    const post = ent("Post", [attr("userId", "UUID")]); // должен матчиться на user_id/userid/...
+    const post = ent("Post", [attr("userId", "UUID")]); 
     const pk = getPrimaryKey(user);
 
     const col = findExistingFKColumn(post, user.name, toSingular(user.name), pk.name);
-    expect(col).toBe("userId"); // возвращает sanitize(originalName), не snake()
+    expect(col).toBe("userId"); 
   });
 
   it("findExistingFKColumn: учитывает singularFrom", () => {
@@ -124,7 +124,7 @@ describe("sql/common.ts — link entity detection", () => {
     const user = ent("User", [attr("id", "UUID", true)]);
     const role = ent("Role", [attr("id", "UUID", true)]);
 
-    const linkByNameOnly = ent("user_role_link", [attr("note", "TEXT")]); // нет FK колонок
+    const linkByNameOnly = ent("user_role_link", [attr("note", "TEXT")]); 
 
     const found = findExistingLinkEntity(user, role, [user, role, linkByNameOnly]);
     expect(found?.id).toBe(linkByNameOnly.id);
@@ -158,10 +158,10 @@ describe("sql/common.ts — uniqueName & limitIdentifier", () => {
     const a = limitIdentifier(long, 20);
     const b = limitIdentifier(long, 20);
 
-    expect(a).toBe(b); // стабильно
+    expect(a).toBe(b); 
     expect(a.length).toBeLessThanOrEqual(20);
     expect(/^[A-Za-z0-9_]+$/.test(a)).toBe(true);
-    expect(a.includes("_")).toBe(true); // префикс_hash
+    expect(a.includes("_")).toBe(true); 
   });
 
   it("limitIdentifier: разные входы -> разные результаты", () => {

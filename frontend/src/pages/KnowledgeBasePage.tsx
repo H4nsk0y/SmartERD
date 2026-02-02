@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 
-type TabId = "theory" | "normalization" | "tasks" | "literature" | "guide";
+type TabId = "theory" | "normalization" | "tasks" | "literature" | "guide" | "notations";
 type Difficulty = "beginner" | "intermediate" | "advanced";
 type SearchScope = "all" | "definitions" | "examples" | "tasks";
 
@@ -18,7 +18,7 @@ const TABS: Array<{
     subtitle: "ER-модель, ключи, связи", 
     icon: "📚",
     tags: ["базовые", "ключи", "связи", "ER-модель"],
-    related: ["normalization", "tasks"]
+    related: ["normalization", "tasks", "notations"]
   },
   { 
     id: "normalization", 
@@ -50,7 +50,15 @@ const TABS: Array<{
     subtitle: "Как пользоваться SmartERD", 
     icon: "🧭",
     tags: ["инструкция", "гайд", "помощь"],
-    related: []
+    related: ["notations"]
+  },
+  { 
+    id: "notations", 
+    title: "Нотации", 
+    subtitle: "Crow's Foot, UML, IDEF1X", 
+    icon: "🎨",
+    tags: ["нотация", "crow's foot", "uml", "idef1x", "визуализация"],
+    related: ["theory", "guide"]
   },
 ];
 
@@ -519,6 +527,51 @@ export default function KnowledgeBasePage() {
   const [progress, setProgress] = useState<Record<string, boolean>>({});
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
 
+  // Эффект для красивого скроллбара
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.innerHTML = `
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 10px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: linear-gradient(45deg, rgba(99, 102, 241, 0.4), rgba(168, 85, 247, 0.4));
+        border-radius: 10px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(45deg, rgba(99, 102, 241, 0.6), rgba(168, 85, 247, 0.6));
+      }
+      .dark .custom-scrollbar::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: linear-gradient(45deg, rgba(99, 102, 241, 0.5), rgba(168, 85, 247, 0.5));
+      }
+      .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(45deg, rgba(99, 102, 241, 0.7), rgba(168, 85, 247, 0.7));
+      }
+      .custom-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(99, 102, 241, 0.4) rgba(0, 0, 0, 0.05);
+      }
+      .dark .custom-scrollbar {
+        scrollbar-color: rgba(99, 102, 241, 0.5) rgba(255, 255, 255, 0.05);
+      }
+    `;
+    document.head.appendChild(styleElement);
+    
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, []);
+
   const query = q.trim().toLowerCase();
 
   // Загрузка прогресса и закладок из localStorage
@@ -613,6 +666,12 @@ export default function KnowledgeBasePage() {
         go: "normalization", 
         label: "Денормализация",
         priority: 3
+      },
+      { 
+        when: ["нотац", "crow", "foot", "ворон", "uml", "idef", "визуал", "диаграм"], 
+        go: "notations", 
+        label: "Нотации",
+        priority: 1
       },
     ];
 
@@ -861,6 +920,14 @@ export default function KnowledgeBasePage() {
                 onToggleBookmark={toggleBookmark}
               />
             )}
+            {tab === "notations" && (
+              <NotationsSection 
+                difficulty={difficulty} 
+                onMarkAsRead={markAsRead}
+                bookmarks={bookmarks}
+                onToggleBookmark={toggleBookmark}
+              />
+            )}
 
             {/* Связанные темы */}
             {currentTabData && (
@@ -885,6 +952,7 @@ export default function KnowledgeBasePage() {
                     <li>• <b>1НФ</b> — атомарность значений, нет повторяющихся групп.</li>
                     <li>• <b>2НФ</b> — нет частичных зависимостей от части составного PK.</li>
                     <li>• <b>3НФ</b> — нет транзитивных зависимостей от PK.</li>
+                    <li>• <b>Crow's Foot</b> — | один, ○ ноль, ⟨ много.</li>
                   </div>
                   
                   <Divider />
@@ -2093,6 +2161,373 @@ function GuideSection({
           <div className="text-xs mt-1 text-amber-600 dark:text-amber-400">
             Используйте AI панель для быстрого старта, но всегда проверяйте и дорабатывайте 
             результат вручную. Генерация SQL — отличный способ получить основу для миграций.
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function NotationSymbol({ symbol, meaning, example }: { symbol: string; meaning: string; example: string }) {
+  return (
+    <div className="flex items-center gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white/50 dark:bg-gray-800/30 hover:bg-white/70 dark:hover:bg-gray-800/50 transition-colors">
+      <div className="w-12 h-12 flex items-center justify-center text-lg font-bold bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-lg">
+        {symbol}
+      </div>
+      <div className="flex-1">
+        <div className="font-medium text-gray-900 dark:text-gray-100">{meaning}</div>
+        <div className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">{example}</div>
+      </div>
+    </div>
+  );
+}
+
+function NotationsSection({ 
+  difficulty, 
+  onMarkAsRead,
+  bookmarks,
+  onToggleBookmark
+}: { 
+  difficulty: Difficulty;
+  onMarkAsRead: (id: string) => void;
+  bookmarks: Record<string, boolean>;
+  onToggleBookmark: (id: string) => void;
+}) {
+  const crowsFootSymbols = [
+    { symbol: "|", meaning: "Один и обязательно", example: "Ровно одна запись, не NULL" },
+    { symbol: "○|", meaning: "Ноль или один", example: "Необязательная связь, может быть NULL" },
+    { symbol: "|<", meaning: "Один и обязательно ко многим", example: "Минимум одна запись, максимум много" },
+    { symbol: "○<", meaning: "Ноль или много", example: "Необязательная связь, может быть 0..N" },
+    { symbol: "||", meaning: "Ровно один и обязательно (с двух сторон)", example: "Обе записи обязательны" },
+  ];
+
+  const relationshipExamples = [
+    { 
+      type: "1:1", 
+      notation: "| — |", 
+      description: "Одна запись в A связана ровно с одной записью в B",
+      example: "User ←→ Passport",
+      crowsFoot: "| — |"
+    },
+    { 
+      type: "1:N", 
+      notation: "| — <", 
+      description: "Одна запись в A связана с несколькими записями в B",
+      example: "Department ←→ Employee",
+      crowsFoot: "| — <"
+    },
+    { 
+      type: "N:M", 
+      notation: "< — >", 
+      description: "Записи в A связаны с несколькими записями в B и наоборот",
+      example: "Student ←→ Course",
+      crowsFoot: "< — >"
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <Card
+        title="Нотации ER-диаграмм"
+        desc="Обзор основных нотаций для визуализации ER-моделей"
+        right={
+          <div className="flex items-center gap-2">
+            <Pill tone="indigo">SmartERD</Pill>
+            <BookmarkButton
+              sectionId="notations-1"
+              isBookmarked={bookmarks["notations-1"]}
+              onToggle={() => onToggleBookmark("notations-1")}
+            />
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30">
+            <div className="font-semibold text-blue-700 dark:text-blue-300">Что такое нотация в ER-диаграммах?</div>
+            <div className="text-sm text-gray-700 dark:text-gray-300 mt-2">
+              Нотация — это система визуальных символов, используемых для представления элементов 
+              ER-модели (сущностей, атрибутов, связей) и их свойств (кардинальности, обязательности).
+            </div>
+          </div>
+
+          <Reveal 
+            title="Почему выбрана нотация Crow's Foot для SmartERD?" 
+            defaultOpen
+            hint="Основные преимущества"
+            onReveal={() => onMarkAsRead("notations-why")}
+          >
+            <div className="space-y-3">
+              <p className="text-gray-700 dark:text-gray-300">
+                При проектировании средства автоматического преобразования ER-диаграмм в SQL-код важно, 
+                чтобы выбранная нотация однозначно передавала кардинальности и, по возможности, 
+                обязательность участия в связи, а также была читаемой без дополнительных пояснений.
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                <div className="p-3 bg-green-50 dark:bg-green-900/30 rounded-lg">
+                  <div className="font-medium text-green-700 dark:text-green-300">Преимущества Crow's Foot:</div>
+                  <ul className="mt-2 text-sm space-y-1 text-green-600 dark:text-green-400">
+                    <li>• Ориентирована на практическое проектирование реляционных схем</li>
+                    <li>• Позволяет визуально различать базовые типы связей 1:1, 1:N и N:M</li>
+                    <li>• Уменьшает риск неоднозначного толкования диаграммы</li>
+                    <li>• Явно обозначает «многие» на обоих концах связи для N:M</li>
+                    <li>• Простая и интуитивно понятная для новичков</li>
+                  </ul>
+                </div>
+                
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+                  <div className="font-medium text-blue-700 dark:text-blue-300">Как это работает в SmartERD:</div>
+                  <ul className="mt-2 text-sm space-y-1 text-blue-600 dark:text-blue-400">
+                    <li>• Автоматическое преобразование в корректный SQL код</li>
+                    <li>• Визуальная проверка кардинальностей</li>
+                    <li>• Подсказки по обязательности участия</li>
+                    <li>• Интеграция с генерацией миграций</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal 
+            title="Символы нотации Crow's Foot" 
+            hint="Основные элементы для обозначения кардинальности"
+            onReveal={() => onMarkAsRead("notations-symbols")}
+          >
+            <div className="space-y-3">
+              <p className="text-gray-700 dark:text-gray-300">
+                В нотации Crow's Foot на концах линии связи используются условные элементы:
+              </p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {crowsFootSymbols.map((item, idx) => (
+                  <NotationSymbol
+                    key={idx}
+                    symbol={item.symbol}
+                    meaning={item.meaning}
+                    example={item.example}
+                  />
+                ))}
+              </div>
+              
+              <div className="mt-3 p-3 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 rounded-lg">
+                <div className="text-sm font-medium text-amber-700 dark:text-amber-300">💡 Правило чтения:</div>
+                <div className="text-xs mt-1 text-amber-600 dark:text-amber-400">
+                  Вертикальный штрих <b>|</b> соответствует кратности «один»,<br/>
+                  «Воронья лапка» <b>&lt;</b> соответствует кратности «многие»,<br/>
+                  Кружок <b>○</b> у конца линии отражает необязательность участия.
+                </div>
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal 
+            title="Примеры связей в Crow's Foot" 
+            hint="Как выглядят разные типы связей"
+            onReveal={() => onMarkAsRead("notations-examples")}
+          >
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {relationshipExamples.map((example, idx) => (
+                  <div 
+                    key={idx}
+                    className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white/50 dark:bg-gray-800/30"
+                  >
+                    <div className="text-center mb-3">
+                      <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mb-1">{example.crowsFoot}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{example.notation}</div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="text-center">
+                        <div className="font-medium text-gray-900 dark:text-gray-100">{example.type}</div>
+                        <div className="text-xs text-gray-600 dark:text-gray-300">{example.description}</div>
+                      </div>
+                      
+                      <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-800/50 rounded text-center">
+                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Пример:</div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">{example.example}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg">
+                <div className="text-sm font-medium text-green-700 dark:text-green-300">📋 Комбинации читаются так:</div>
+                <div className="mt-1 text-xs text-green-600 dark:text-green-400 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div><b>||</b> означает «ровно один и обязательно»</div>
+                  <div><b>○|</b> означает «ноль или один»</div>
+                  <div><b>|&lt;</b> означает «один и обязательно ко многим»</div>
+                  <div><b>○&lt;</b> означает «ноль или много»</div>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+
+          {difficulty === "intermediate" && (
+            <Reveal 
+              title="Другие популярные нотации" 
+              hint="UML, IDEF1X, Chen"
+              onReveal={() => onMarkAsRead("notations-other")}
+            >
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white/50 dark:bg-gray-800/30">
+                    <div className="font-medium text-gray-900 dark:text-gray-100">UML (Unified Modeling Language)</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                      Использует числа и диапазоны: 1, 0..1, 1..*, 0..*
+                    </div>
+                    <div className="mt-2 text-xs px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded inline-block">
+                      Пример: 1 — 0..*
+                    </div>
+                  </div>
+                  
+                  <div className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white/50 dark:bg-gray-800/30">
+                    <div className="font-medium text-gray-900 dark:text-gray-100">IDEF1X</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                      Фокус на реляционных базах, различает идентифицирующие и неидентифицирующие связи
+                    </div>
+                    <div className="mt-2 text-xs px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded inline-block">
+                      Использует сплошные/пунктирные линии
+                    </div>
+                  </div>
+                  
+                  <div className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white/50 dark:bg-gray-800/30">
+                    <div className="font-medium text-gray-900 dark:text-gray-100">Нотация Чена</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                      Ромбы для связей, числа над линиями
+                    </div>
+                    <div className="mt-2 text-xs px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded inline-block">
+                      Пример: 1 — N
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+                  <div className="text-sm font-medium text-blue-700 dark:text-blue-300">💡 Почему Crow's Foot лучше для SmartERD:</div>
+                  <div className="text-xs mt-1 text-blue-600 dark:text-blue-400">
+                    Такое представление делает структуру связей понятной на уровне диаграммы 
+                    и согласуется с дальнейшими правилами преобразования ER-модели в SQL-схему. 
+                    Crow's Foot наиболее удобна для автоматического преобразования в SQL.
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+          )}
+
+          {difficulty === "advanced" && (
+            <Reveal 
+              title="Практическое применение в SmartERD" 
+              hint="Как нотация влияет на генерацию SQL"
+              onReveal={() => onMarkAsRead("notations-practice")}
+            >
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-3 border border-green-200 dark:border-green-700 rounded-lg bg-green-50 dark:bg-green-900/30">
+                    <div className="font-medium text-green-700 dark:text-green-300">Пример: Связь 1:N</div>
+                    <div className="mt-2 text-xs space-y-2 text-green-600 dark:text-green-400">
+                      <div><b>Диаграмма:</b> Department |&lt;—— Employee</div>
+                      <div><b>SQL:</b></div>
+                      <pre className="bg-white/70 dark:bg-gray-800/70 p-2 rounded text-xs overflow-x-auto">
+{`CREATE TABLE departments (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100)
+);
+
+CREATE TABLE employees (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100),
+  department_id INTEGER NOT NULL,
+  FOREIGN KEY (department_id) 
+    REFERENCES departments(id)
+    ON DELETE RESTRICT
+);`}
+                      </pre>
+                    </div>
+                  </div>
+                  
+                  <div className="p-3 border border-purple-200 dark:border-purple-700 rounded-lg bg-purple-50 dark:bg-purple-900/30">
+                    <div className="font-medium text-purple-700 dark:text-purple-300">Пример: Связь N:M</div>
+                    <div className="mt-2 text-xs space-y-2 text-purple-600 dark:text-purple-400">
+                      <div><b>Диаграмма:</b> Student &lt;——&gt; Course</div>
+                      <div><b>SQL (автоматически создается таблица-связка):</b></div>
+                      <pre className="bg-white/70 dark:bg-gray-800/70 p-2 rounded text-xs overflow-x-auto">
+{`CREATE TABLE students (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100)
+);
+
+CREATE TABLE courses (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(100)
+);
+
+-- Автоматически генерируемая таблица-связка
+CREATE TABLE student_courses (
+  student_id INTEGER NOT NULL,
+  course_id INTEGER NOT NULL,
+  PRIMARY KEY (student_id, course_id),
+  FOREIGN KEY (student_id) 
+    REFERENCES students(id),
+  FOREIGN KEY (course_id) 
+    REFERENCES courses(id)
+);`}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-3 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-lg">
+                  <div className="text-sm font-medium text-indigo-700 dark:text-indigo-300">🎯 Ключевое преимущество:</div>
+                  <div className="text-xs mt-1 text-indigo-600 dark:text-indigo-400">
+                    Crow's Foot позволяет SmartERD однозначно определить тип связи и автоматически 
+                    сгенерировать корректный SQL код с соответствующими ограничениями целостности 
+                    (FOREIGN KEY, NOT NULL, UNIQUE), что минимизирует человеческие ошибки при проектировании.
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+          )}
+        </div>
+      </Card>
+
+      <Card
+        title="Интерактивная практика"
+        desc="Проверь понимание нотации Crow's Foot"
+        right={<Pill tone="purple">тренажёр</Pill>}
+      >
+        <div className="space-y-4">
+          <InteractiveQuiz
+            question="Какой символ в нотации Crow's Foot обозначает 'ноль или один' (необязательная связь с максимум одной записью)?"
+            options={[
+              { id: "1", text: "| (вертикальная черта)" },
+              { id: "2", text: "○| (кружок и вертикальная черта)" },
+              { id: "3", text: "< (воронья лапка)" },
+              { id: "4", text: "○< (кружок и воронья лапка)" }
+            ]}
+            correctAnswer="2"
+            explanation="Верно! Символ ○| обозначает 'ноль или один'. Кружок ○ показывает необязательность, вертикальная черта | показывает 'один'."
+          />
+          
+          <InteractiveQuiz
+            question="Какая комбинация символов Crow's Foot описывает связь 'каждый сотрудник должен работать в одном отделе, но отдел может быть без сотрудников'?"
+            options={[
+              { id: "1", text: "Department ○| — | Employee" },
+              { id: "2", text: "Department | — | Employee" },
+              { id: "3", text: "Department ○< — | Employee" },
+              { id: "4", text: "Department | — ○< Employee" }
+            ]}
+            correctAnswer="3"
+            explanation="Правильный ответ: Department ○< — | Employee. Со стороны Department: ○< (ноль или много отделов), со стороны Employee: | (ровно один сотрудник, обязательно). Это означает: отдел может иметь 0..N сотрудников, а сотрудник должен быть ровно в одном отделе."
+          />
+          
+          <div className="p-3 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-900/20 dark:to-green-900/20 rounded-lg">
+            <div className="text-sm font-medium text-emerald-700 dark:text-emerald-300">💡 Совет по использованию в SmartERD:</div>
+            <div className="text-xs mt-1 text-emerald-600 dark:text-emerald-400">
+              При создании связей в SmartERD обращайте внимание на подсказки, которые показывают, 
+              какой тип связи вы создаёте. Это поможет избежать ошибок в кардинальности и 
+              автоматически получить корректный SQL код.
+            </div>
           </div>
         </div>
       </Card>

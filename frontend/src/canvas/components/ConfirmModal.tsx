@@ -1,8 +1,4 @@
 // frontend/src/canvas/components/ConfirmModal.tsx
-/**
- * canvas/components/ConfirmModal
- * Модальное окно подтверждения действия.
- */
 import React from "react";
 import { createPortal } from "react-dom";
 
@@ -25,7 +21,6 @@ export default function ConfirmModal({
   onConfirm,
   onCancel,
 }: Props) {
-  // Esc / Enter
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -36,7 +31,6 @@ export default function ConfirmModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onCancel, onConfirm]);
 
-  // Пока открыто модальное окно - блокируется скролл 
   React.useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -57,11 +51,9 @@ export default function ConfirmModal({
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
-    >
-      {/* Подложка */}
+    >     
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-      {/* Карточка */}
       <div className="relative z-10 w-[min(92vw,480px)] rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 shadow-2xl">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
           {title}

@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
 
-/* ---------- Типы ---------- */
+
 
 export interface Attribute {
   id: string;
@@ -17,10 +17,9 @@ export interface Entity {
   x: number;
   y: number;
   attributes: Attribute[];
-  color?: string; // ✅ цвет карточки
+  color?: string;
 }
 
-/** Явные настройки FK для 1:1 / 1:N */
 export interface FKMeta {
   column?: string;
   type?: string;
@@ -31,7 +30,6 @@ export interface FKMeta {
   index?: boolean;
 }
 
-/** Явные настройки линк-таблицы для N:M */
 export interface LinkMeta {
   tableName?: string;
   leftColumn?: string;
@@ -61,12 +59,10 @@ const clone = <T,>(v: T): T => {
   return typeof structuredClone === "function" ? structuredClone(v) : JSON.parse(JSON.stringify(v));
 };
 
-/* ---------- Мягкие нормалайзеры имен (разрешаем _ и -) ---------- */
 
 const ENTITY_NAME_MAX = 64;
 const ATTR_NAME_MAX = 64;
 
-/** Пропускаем буквы/цифры/подчёркивание/дефис и одинарные пробелы по краям обрезаем */
 function filterIdentifier(input: string, maxLen: number): string {
   const onlyAllowed = (input ?? "")
     .replace(/[^\p{L}\p{N}_\- ]+/gu, "")
@@ -75,7 +71,6 @@ function filterIdentifier(input: string, maxLen: number): string {
   return onlyAllowed.slice(0, maxLen);
 }
 
-/** Уникализатор: если занято — добавляем _2/_3/... (case-insensitive) */
 function uniquify(base: string, usedLower: Set<string>): string {
   let name = base || "Entity";
   let i = 2;
@@ -96,7 +91,6 @@ function normalizeAttributeNameLoose(raw: string, usedLower: Set<string>) {
   return uniquify(filtered || "attr", usedLower);
 }
 
-/** ✅ Проверка: есть ли уже связь между этими сущностями (в любом направлении) */
 function hasRelationshipBetween(rels: Relationship[], a: string, b: string): boolean {
   return rels.some((r) => (r.from === a && r.to === b) || (r.from === b && r.to === a));
 }
@@ -105,33 +99,27 @@ interface ERState {
   entities: Entity[];
   relationships: Relationship[];
 
-  //NEW: batch для групповых операций (drag / delete group)
   beginBatch: () => void;
   endBatch: () => void;
 
-  //NEW: удобный атомарный delete группы
   removeEntities: (ids: string[]) => void;
 
-  // сущности
   addEntity: (name: string, x: number, y: number) => void;
   updateEntityPosition: (id: string, x: number, y: number) => void;
   updateEntitiesPositions: (updates: Array<{ id: string; x: number; y: number }>) => void;
   removeEntity: (id: string) => void;
   renameEntity: (id: string, newName: string) => void;
 
-  // цвет сущности
   setEntityColor: (id: string, color: string) => void;
 
-  // атрибуты
   addAttribute: (entityId: string, name: string, type: string, isPrimaryKey?: boolean) => void;
   removeAttribute: (entityId: string, attrId: string) => void;
 
-  // правки существующих атрибутов
   updateAttributeName: (entityId: string, attrId: string, newName: string) => void;
   updateAttributeType: (entityId: string, attrId: string, newType: string) => void;
   setAttributePrimaryKey: (entityId: string, attrId: string, isPrimary: boolean) => void;
 
-  // связи
+
   addRelationship: (from: string, to: string, type: Relationship["type"]) => void;
   removeRelationship: (id: string) => void;
   updateRelationshipType: (id: string, type: Relationship["type"]) => void;
@@ -140,33 +128,31 @@ interface ERState {
   setRelationshipFK: (id: string, fk: Partial<FKMeta>) => void;
   setRelationshipLink: (id: string, link: Partial<LinkMeta>) => void;
 
-  // взаимодействие с линиями
   selectedRelationshipId: string | null;
   setSelectedRelationship: (id: string | null) => void;
 
-  // импорт / сброс данных
   setDiagramData: (entities: Entity[], relationships: Relationship[]) => void;
   clearAll: () => void;
 
-  // история (undo/redo)
+  
   undo: () => void;
   redo: () => void;
   _past: Snapshot[];
   _future: Snapshot[];
   _isRestoring: boolean;
 
-  // ✅ NEW: depth батча (можно nested)
+
   _batchDepth: number;
 }
 
-/* ---------- Zustand Store ---------- */
+
 
 export const useERStore = create<ERState>((set, get) => {
   const pushHistory = () => {
     const s = get();
     if (s._isRestoring) return;
 
-    // ✅ NEW: если мы внутри batch — не пишем историю на каждый action
+   
     if (s._batchDepth > 0) return;
 
     const snap: Snapshot = {
@@ -184,16 +170,16 @@ export const useERStore = create<ERState>((set, get) => {
     _future: [],
     _isRestoring: false,
 
-    // ✅ NEW
+    
     _batchDepth: 0,
 
-    /* ---------- ✅ Batch API ---------- */
+    
     beginBatch: () => {
       set((s) => {
         if (s._isRestoring) return {};
         const nextDepth = (s._batchDepth ?? 0) + 1;
 
-        // первая “входная” точка батча — пишем snapshot
+        
         if ((s._batchDepth ?? 0) === 0) {
           const snap: Snapshot = {
             entities: clone(s.entities),
@@ -229,7 +215,7 @@ export const useERStore = create<ERState>((set, get) => {
       }));
     },
 
-    /* ---------- Сущности ---------- */
+    
     addEntity: (name, x, y) => {
       pushHistory();
       set((s) => {
@@ -288,7 +274,7 @@ export const useERStore = create<ERState>((set, get) => {
       });
     },
 
-    // ✅ Установка цвета карточки
+ 
     setEntityColor: (id, color) => {
       pushHistory();
       set((s) => ({
@@ -296,7 +282,7 @@ export const useERStore = create<ERState>((set, get) => {
       }));
     },
 
-    /* ---------- Атрибуты ---------- */
+   
     addAttribute: (entityId, name, type, isPrimaryKey = false) => {
       pushHistory();
       set((s) => ({
@@ -376,13 +362,13 @@ export const useERStore = create<ERState>((set, get) => {
       }));
     },
 
-    /* ---------- Связи ---------- */
+   
     addRelationship: (from, to, type) => {
       const s = get();
 
-      // ✅ НОВОЕ ПРАВИЛО: без ролей/уточнений — одна связь на пару сущностей (в любом направлении)
+      
       if (hasRelationshipBetween(s.relationships, from, to)) {
-        return; // ничего не делаем, историю не пишем
+        return; 
       }
 
       pushHistory();
@@ -434,11 +420,11 @@ export const useERStore = create<ERState>((set, get) => {
       }));
     },
 
-    /* ---------- Наведение и выбор связей ---------- */
+    
     selectedRelationshipId: null,
     setSelectedRelationship: (id) => set({ selectedRelationshipId: id }),
 
-    /* ---------- Импорт / Сброс ---------- */
+  
     setDiagramData: (entities, relationships) => {
       pushHistory();
 
@@ -458,7 +444,7 @@ export const useERStore = create<ERState>((set, get) => {
           ...clone(e),
           name: finalEntName,
           attributes: attrs,
-          color: e.color, // ✅ сохраняем цвет при импорте
+          color: e.color, 
         });
       }
 
@@ -478,7 +464,7 @@ export const useERStore = create<ERState>((set, get) => {
       }));
     },
 
-    /* ---------- Undo / Redo ---------- */
+    
     undo: () => {
       const s = get();
       if (s._past.length === 0) return;
@@ -489,7 +475,7 @@ export const useERStore = create<ERState>((set, get) => {
       };
       set({
         _isRestoring: true,
-        _batchDepth: 0, // NEW: сброс batch
+        _batchDepth: 0, 
         entities: clone(prev.entities),
         relationships: clone(prev.relationships),
         _past: s._past.slice(0, -1),
@@ -509,7 +495,7 @@ export const useERStore = create<ERState>((set, get) => {
       };
       set({
         _isRestoring: true,
-        _batchDepth: 0, //NEW: сброс batch
+        _batchDepth: 0, 
         entities: clone(next.entities),
         relationships: clone(next.relationships),
         _past: [...s._past, current],

@@ -13,8 +13,6 @@ import { SYSTEM_PROMPT, specToAppFormat, parseModelJson } from "./er-generate.js
 const app = express();
 const prisma = new PrismaClient();
 
-// --- CORS ---
-// Разрешаем любые localhost порты + Authorization header
 app.use(
   cors({
     origin: [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/],
@@ -25,15 +23,15 @@ app.use(
 
 app.use(express.json({ limit: "2mb" }));
 
-// --- AI (LM Studio / OpenAI-compatible) ---
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || "lm-studio",
-  baseURL: process.env.OPENAI_BASE_URL || "http://127.0.0.1:1234/v1",
+  apiKey: process.env.AI_API_KEY || process.env.OPENAI_API_KEY || "lm-studio",
+  baseURL: process.env.AI_BASE_URL || process.env.OPENAI_BASE_URL || "http://127.0.0.1:1234/v1",
 });
-const MODEL = process.env.OPENAI_MODEL || "meta-llama-3.1-8b-instruct";
 
-// --- JWT helpers ---
+const MODEL = process.env.AI_MODEL || process.env.OPENAI_MODEL || "meta-llama-3.1-8b-instruct";
+
 const JWT_SECRET = process.env.JWT_SECRET || "change_me";
+
 function signToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
 }
@@ -46,21 +44,16 @@ function auth(req, res, next) {
   const token = h.slice(7);
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // { userId, email }
+    req.user = decoded;
     return next();
   } catch {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
 }
 
-// --- Health ---
 app.get("/health", (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
-
-// =====================================================
-// AUTH API
-// =====================================================
 
 const registerSchema = z.object({
   name: z.string().min(1).max(80),
@@ -141,10 +134,6 @@ app.get("/api/me", auth, async (req, res) => {
     return res.status(500).json({ ok: false, error: "Server error" });
   }
 });
-
-// =====================================================
-// PROJECTS API
-// =====================================================
 
 const projectCreateSchema = z.object({
   name: z.string().min(1).max(120),
@@ -253,16 +242,13 @@ app.delete("/api/projects/:id", auth, async (req, res) => {
   }
 });
 
-// =====================================================
-// AI API 
-// =====================================================
-
 app.post("/api/ai/chat", async (req, res) => {
   try {
     const { messages } = req.body;
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ ok: false, error: "messages must be a non-empty array" });
     }
+
     const safeMessages = messages.map((m) => ({
       role: m.role === "system" || m.role === "assistant" || m.role === "user" ? m.role : "user",
       content: String(m.content ?? "").slice(0, 8000),
@@ -315,7 +301,7 @@ app.post("/api/ai/er/generate", async (req, res) => {
 });
 
 export { app, prisma };
-// --- Start ---
+
 if (process.env.NODE_ENV !== "test") {
   const port = Number(process.env.PORT || 8787);
   app.listen(port, () => {

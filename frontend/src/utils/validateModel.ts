@@ -12,10 +12,8 @@ import {
   uniqueName,
 } from "./sql/common";
 
-/** Уровень сообщения валидатора */
 export type ValidationLevel = "error" | "warning" | "info";
 
-/** Единица результата проверки */
 export interface ValidationIssue {
   level: ValidationLevel;
   code: string;
@@ -24,13 +22,11 @@ export interface ValidationIssue {
   suggestion?: string;
 }
 
-/** Результат проверки всей модели */
 export interface ValidationResult {
   ok: boolean;
   issues: ValidationIssue[];
 }
 
-/** Быстрая нормализация типа для сравнения совместимости (INT == int ==  Int ) */
 function normType(t: string) {
   return (t || "").replace(/\s+/g, "").toUpperCase();
 }
@@ -49,7 +45,6 @@ function rootOfEntityName(name: string) {
   return snake(toSingular(sanitize(name || "")));
 }
 
-/** Пытаемся угадать PK, если 🔑 не стоит, но есть id / <entity>_id типа INT/UUID */
 function inferImplicitPk(entity: Entity): { name: string; type: string } | null {
   const root = rootOfEntityName(entity.name);
   const candidates = ["id", root ? `${root}_id` : ""].filter(Boolean);
@@ -63,12 +58,6 @@ function inferImplicitPk(entity: Entity): { name: string; type: string } | null 
   return null;
 }
 
-/**
- * ✅ ВАЖНО: единый источник PK для валидатора
- * 1) явный PK (isPrimaryKey) — приоритет
- * 2) эвристический implicit PK (id / <entity>_id)
- * 3) фоллбэк на общую логику генератора
- */
 function getPrimaryKey(entity: Entity): { name: string; type: string } {
   const explicit = entity.attributes.find((a) => (a as any).isPrimaryKey);
   if (explicit) {
@@ -92,7 +81,6 @@ function getPrimaryKey(entity: Entity): { name: string; type: string } {
   };
 }
 
-/** Набор имён сущностей -> для быстрых проверок */
 function buildNameMap(entities: Entity[]) {
   const byLower = new Map<string, Entity[]>();
   for (const e of entities) {
@@ -104,7 +92,6 @@ function buildNameMap(entities: Entity[]) {
   return byLower;
 }
 
-/** Похоже ли имя таблицы на «линк-таблицу» двух сущностей (по включению обоих корней в snake_case) */
 function looksLikeLinkName(linkName: string, aName: string, bName: string) {
   const en = snake(linkName);
   const an = snake(toSingular(sanitize(aName)));
@@ -112,7 +99,6 @@ function looksLikeLinkName(linkName: string, aName: string, bName: string) {
   return en.includes(an) && en.includes(bn);
 }
 
-/** Вспомогательные для новых проверок */
 function hasSelfRelation(entityId: string, relationships: Relationship[]) {
   return relationships.some(
     (r) =>
@@ -121,18 +107,19 @@ function hasSelfRelation(entityId: string, relationships: Relationship[]) {
       r.to === entityId
   );
 }
+
 function countIdCols(e: Entity) {
   return e.attributes
     .filter((a) => /_id$/i.test(sanitize(a.name)))
     .map((a) => sanitize(a.name))
     .filter(Boolean);
 }
+
 function findEntityByRootName(entities: Entity[], rootSnake: string): Entity | null {
   const wanted = (rootSnake || "").toLowerCase();
   return entities.find((en) => rootOfEntityName(en.name) === wanted) || null;
 }
 
-/** Определяем “связочную таблицу” по факту: есть 2 *_id и две связи 1:N из соответствующих сущностей */
 function detectLinkTableViaTwoOneToMany(
   link: Entity,
   entities: Entity[],
@@ -162,10 +149,8 @@ function detectLinkTableViaTwoOneToMany(
   return { left: e1, right: e2, leftCol: c1, rightCol: c2 };
 }
 
-/** Базовые правила валидных идентификаторов без кавычек */
 const IDENT_OK = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-/** Короткий список зарезервированных слов (пересечение Postgres/MySQL + частые коллизии имён) */
 const RESERVED = new Set([
   "select",
   "insert",
@@ -200,13 +185,9 @@ const RESERVED = new Set([
   "default",
 ]);
 
-/* =======================
-   NEW: цикл/граф проверки
-   ======================= */
-
 type DepEdge = {
-  from: string; // зависимая таблица (child)
-  to: string; // родитель (parent)
+  from: string;
+  to: string;
   relId: string;
 };
 
@@ -214,7 +195,6 @@ function sccKey(ids: string[]) {
   return [...ids].sort().join("|");
 }
 
-/** Tarjan SCC */
 function tarjanScc(nodes: string[], adj: Map<string, DepEdge[]>) {
   let idx = 0;
   const index = new Map<string, number>();
@@ -259,13 +239,11 @@ function tarjanScc(nodes: string[], adj: Map<string, DepEdge[]>) {
   return out;
 }
 
-/** Главная функция валидации */
 export function validateModel(entities: Entity[], relationships: Relationship[]): ValidationResult {
   const issues: ValidationIssue[] = [];
   const entById = new Map(entities.map((e) => [e.id, e]));
   const nameMap = buildNameMap(entities);
 
-  // Если после нормализации имя пустое — ошибка
   for (const e of entities) {
     const normName = sanitize(e.name || "");
     if (!normName) {
@@ -278,7 +256,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // Быстрые счётчики связей по сущности
   const relCountByEntity = new Map<string, number>();
   for (const r of relationships) {
     relCountByEntity.set(r.from, (relCountByEntity.get(r.from) ?? 0) + 1);
@@ -286,7 +263,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
   }
   const hasAnyRelations = (entityId: string) => (relCountByEntity.get(entityId) ?? 0) > 0;
 
-  // --- 1) Дубликаты имён сущностей (без учёта регистра) ---
   for (const [, list] of nameMap) {
     if (list.length > 1) {
       issues.push({
@@ -299,7 +275,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // --- 1a) Резерв/кавычки для имён сущностей ---
   for (const e of entities) {
     const raw = e.name;
     const norm = sanitize(raw);
@@ -309,8 +284,7 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
         code: "IDENT_NEEDS_QUOTING_ENTITY",
         message: `Имя таблицы «${raw}» требует экранирования (кавычек) в SQL.`,
         where: [e.id],
-        suggestion:
-          "Переименуйте таблицу в буквенно-цифровое имя с подчёркиванием, чтобы избежать кавычек.",
+        suggestion: "Переименуйте таблицу в буквенно-цифровое имя с подчёркиванием, чтобы избежать кавычек.",
       });
     } else if (RESERVED.has(norm.toLowerCase())) {
       issues.push({
@@ -323,7 +297,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // --- 2) Повторяющиеся атрибуты в одной сущности ---
   for (const e of entities) {
     const seen = new Map<string, number>();
     for (const a of e.attributes) {
@@ -344,7 +317,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // --- 2a) Резерв/кавычки для атрибутов ---
   for (const e of entities) {
     for (const a of e.attributes) {
       const raw = a.name;
@@ -369,7 +341,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // Подготовка пар N:M и поиск «явных» линк-таблиц
   type MMPair = { from: Entity; to: Entity; key: string; rel: Relationship };
   const mmPairs: MMPair[] = relationships
     .filter((r) => r.type === "many-to-many")
@@ -383,7 +354,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
   const linkEntityByPair = new Map<string, Entity | null>();
   const deferredLinkTables = new Set<string>();
 
-  // "финальное" имя link-таблицы так же, как в генераторе
   const usedTableNames = new Set(entities.map((e) => sanitize(e.name).toLowerCase()));
   const linkSqlNameByPair = new Map<string, string>();
 
@@ -427,7 +397,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     [...linkEntityByPair.values()].filter((e): e is Entity => !!e).map((e) => e.id)
   );
 
-  // --- 3) Пустые сущности / отсутствующие PK ---
   for (const e of entities) {
     const isEmpty = e.attributes.length === 0;
     const participates = hasAnyRelations(e.id);
@@ -466,11 +435,10 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
             level: "info",
             code: "IMPLICIT_PK_INFERRED",
             message:
-              `В сущности «${e.name}» 🔑 не отмечен, но найден столбец «${implicitPk.name} ${implicitPk.type}». ` +
+              `В сущности «${e.name}» PK не отмечен, но найден столбец «${implicitPk.name} ${implicitPk.type}». ` +
               `Он будет использован как PRIMARY KEY (без создания нового id).`,
             where: [e.id],
-            suggestion:
-              "Если хотите — отметьте этот столбец как PK вручную (🔑), чтобы это было видно на диаграмме.",
+            suggestion: "Если хотите — отметьте этот столбец как PK вручную, чтобы это было видно на диаграмме.",
           });
         } else if (linkViaTwo) {
           issues.push({
@@ -479,10 +447,12 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
             message:
               `Таблица «${e.name}» выглядит как связочная (2 FK: «${linkViaTwo.leftCol}», «${linkViaTwo.rightCol}») ` +
               `и подключена через две связи 1:N. Для таких таблиц обычно делают составной PRIMARY KEY (${linkViaTwo.leftCol}, ${linkViaTwo.rightCol}) ` +
-              `и НЕ добавляют отдельный surrogate id.`,
+              `и не добавляют отдельный surrogate id.`,
             where: [e.id],
             suggestion:
-              "Мы сейчас добавим это поведение в генератор SQL (нужно поправить файл sql/postgres.ts — пришли его).",
+              "Если это чистая связочная таблица N:M, обычно не делают отдельный surrogate id. " +
+              "Лучше задать уникальность пары (student_id, course_id): либо составной PRIMARY KEY, либо UNIQUE по этим двум колонкам. " +
+              "Если по предметной области возможны несколько записей на одну пару — тогда отдельный id оправдан.",
           });
         } else {
           issues.push({
@@ -490,14 +460,13 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
             code: "MISSING_PK",
             message: `В сущности «${e.name}» явный первичный ключ не задан — будет добавлен surrogate PK (id).`,
             where: [e.id],
-            suggestion: "Можно явно отметить PK в карточке сущности (🔑), если нужно.",
+            suggestion: "Можно явно отметить PK в карточке сущности, если нужно.",
           });
         }
       }
     }
   }
 
-  // --- 3a) Несвязанная, но непустая сущность ---
   for (const e of entities) {
     if (e.attributes.length > 0 && !hasAnyRelations(e.id) && !explicitLinkIds.has(e.id)) {
       issues.push({
@@ -510,7 +479,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // --- 3b) Self-link по parent_*_id (если связи нет) ---
   for (const e of entities) {
     const parentAttr = e.attributes.find((a) => /^parent_.*_id$/i.test(sanitize(a.name)));
     if (parentAttr && !hasSelfRelation(e.id, relationships)) {
@@ -526,7 +494,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // --- 3c) Таблица с двумя *_id без связи M:N ---
   for (const e of entities) {
     const idCols = countIdCols(e);
     if (idCols.length !== 2) continue;
@@ -540,8 +507,7 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
           `Таблица «${e.name}» используется как связочная между «${linkViaTwo.left.name}» и «${linkViaTwo.right.name}» ` +
           `через две связи 1:N. Это нормальный способ моделирования N:M через отдельную таблицу.`,
         where: [e.id],
-        suggestion:
-          "Если хотите — можно дополнительно оформить и как связь N:M в инспекторе, но это необязательно.",
+        suggestion: "Если хотите — можно дополнительно оформить и как связь N:M в инспекторе, но это необязательно.",
       });
       continue;
     }
@@ -562,18 +528,13 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
         code: "TWO_ID_TABLE_NO_MM",
         message: `Таблица «${e.name}» похожа на link-таблицу (ровно две *_id: «${l}», «${r}»), но связи M:N между сущностями не найдено.`,
         where: [e.id],
-        suggestion:
-          "Если это связочная таблица — всё ок. Если вы ожидали N:M — оформите связь N:M в инспекторе.",
+        suggestion: "Если это связочная таблица — всё ок. Если вы ожидали N:M — оформите связь N:M в инспекторе.",
       });
     }
   }
 
-  /* =========================================================
-     NEW: коллизии имён FK-колонок в пределах одной таблицы
-     ========================================================= */
-  const fkColUsage = new Map<string, Map<string, string[]>>(); // toId -> colLower -> relIds
+  const fkColUsage = new Map<string, Map<string, string[]>>();
 
-  // --- 4) Проверки по связям ---
   for (const r of relationships) {
     const from = entById.get(r.from);
     const to = entById.get(r.to);
@@ -587,39 +548,17 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     const fromSing = toSingular(fromName);
     const toSing = toSingular(toName);
 
-    // if (r.type === "one-to-one") {
-    //   const hasFromType = !!fromPK?.type;
-    //   const hasToType = !!toPK?.type;
-    //   if (hasFromType && hasToType && normType(fromPK.type) !== normType(toPK.type)) {
-    //     issues.push({
-    //       level: "error",
-    //       code: "FK_TYPE_MISMATCH",
-    //       message: `Связь 1:1 ${from.name}↔${to.name}: типы PK различаются (${fromPK.type} vs ${toPK.type}). FK будет несовместим без приведения типов.`,
-    //       where: [from.id, to.id],
-    //       suggestion:
-    //         "Выравняйте типы PK у обеих таблиц или задайте согласованные типы, чтобы FK был совместим.",
-    //     });
-    //     continue;
-    //   }
-    // }
-
     if (r.type === "one-to-one" || r.type === "one-to-many") {
-      // ✅ NEW: ожидаемый тип FK-колонки: fk.type приоритетнее, иначе PK referenced
-      const expectedFkType = (r.fk?.type && r.fk.type.trim()) ? r.fk.type : fromPK.type;
+      const expectedFkType = r.fk?.type && r.fk.type.trim() ? r.fk.type : fromPK.type;
 
-      // === вычислим “имя FK-колонки”, чтобы поймать коллизии между несколькими связями ===
       const suggestedExisting = findExistingFKColumn(to, fromName, fromSing, fromPK.name);
 
-      // self-loop: по DDL логичнее parent_id / parent_<pk>
       const computedSelf = `parent_${snake(fromPK.name)}`;
       const computedRegular = `${snake(fromSing)}_${snake(fromPK.name)}`;
-
       const computed = r.from === r.to ? computedSelf : computedRegular;
 
       const desiredCol =
-        (r.fk?.column && sanitize(r.fk.column)) ||
-        suggestedExisting ||
-        sanitize(computed);
+        (r.fk?.column && sanitize(r.fk.column)) || suggestedExisting || sanitize(computed);
 
       const toMap = fkColUsage.get(to.id) ?? new Map<string, string[]>();
       const key = desiredCol.toLowerCase();
@@ -628,11 +567,8 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
       toMap.set(key, list);
       fkColUsage.set(to.id, toMap);
 
-      // === обычные проверки типов как было (но теперь с expectedFkType) ===
       if (desiredCol && hasColumn(to, desiredCol)) {
-        const fkAttr = to.attributes.find(
-          (a) => sanitize(a.name).toLowerCase() === desiredCol.toLowerCase()
-        );
+        const fkAttr = to.attributes.find((a) => sanitize(a.name).toLowerCase() === desiredCol.toLowerCase());
         const fkType = fkAttr?.type || "";
         if (fkType && normType(fkType) !== normType(expectedFkType)) {
           issues.push({
@@ -666,19 +602,17 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
         });
       }
 
-      // ✅ NEW: self-loop + NOT NULL предупреждение
       if (r.from === r.to) {
-        const nn = r.fk?.notNull !== false; // undefined -> true (у вас по умолчанию)
+        const nn = r.fk?.notNull !== false;
         if (nn) {
           issues.push({
             level: "warning",
             code: "SELF_LOOP_NOT_NULL",
             message:
               `Самосвязь ${from.name}→${to.name} помечена как обязательная (FK NOT NULL). ` +
-              `Это делает вставку “корневых” записей проблемной: строку без родителя вставить нельзя.`,
+              `Это делает вставку корневых записей проблемной: строку без родителя вставить нельзя.`,
             where: [r.id, from.id],
-            suggestion:
-              "Авто-фикс по смыслу: сделайте FK nullable (fk.notNull=false), чтобы получить 0..* вместо 1..*.",
+            suggestion: "Сделайте FK nullable (fk.notNull=false), чтобы получить 0..* вместо 1..*.",
           });
         }
       }
@@ -693,7 +627,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
 
       const finalSqlLinkName = linkSqlNameByPair.get(key) ?? suggestLinkTableName(from.name, to.name);
 
-      // ✅ NEW: self many-to-many — по умолчанию left/right колонки совпадут
       if (from.id === to.id) {
         const base = fkCol(fromSing, fromPKName);
         const leftCol = sanitize(r.link?.leftColumn || base);
@@ -704,10 +637,9 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
             code: "SELF_MM_COLUMNS_COLLIDE",
             message:
               `Связь N:M ${from.name}↔${to.name} является самосвязью. ` +
-              `Для неё нужны ДВЕ разные FK-колонки в линк-таблице, но сейчас leftColumn/rightColumn совпадают («${leftCol}»).`,
+              `Для неё нужны две разные FK-колонки в линк-таблице, но сейчас leftColumn/rightColumn совпадают («${leftCol}»).`,
             where: [r.id],
-            suggestion:
-              `Задайте разные имена: например leftColumn="${base}_a", rightColumn="${base}_b" (или любые разные).`,
+            suggestion: `Задайте разные имена: например leftColumn="${base}_a", rightColumn="${base}_b" (или любые разные).`,
           });
         }
       }
@@ -781,7 +713,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // --- Проверка: self-loop тип FK совпадает с PK (как было) ---
   for (const r of relationships) {
     if (r.from !== r.to) continue;
     const e = entById.get(r.from);
@@ -790,9 +721,7 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     const pk = getPrimaryKey(e);
     const fkName = (r.fk?.column && sanitize(r.fk.column)) || `parent_${snake(pk.name)}`;
 
-    const fkAttr = e.attributes.find(
-      (a) => sanitize(a.name).toLowerCase() === fkName.toLowerCase()
-    );
+    const fkAttr = e.attributes.find((a) => sanitize(a.name).toLowerCase() === fkName.toLowerCase());
     if (fkAttr && fkAttr.type && normType(fkAttr.type) !== normType(pk.type)) {
       issues.push({
         level: "error",
@@ -804,7 +733,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // --- Потенциальная линк-таблица без M:N (как было) ---
   for (const e of entities) {
     const isSide = mmPairs.some((p) => p.from.id === e.id || p.to.id === e.id);
     if (isSide) continue;
@@ -826,7 +754,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // ✅ NEW: FK-колонки коллизии в одной таблице
   for (const [toId, m] of fkColUsage) {
     const toEnt = entById.get(toId);
     if (!toEnt) continue;
@@ -834,7 +761,7 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     for (const [colLower, relIds] of m) {
       if (relIds.length <= 1) continue;
 
-      const colName = relIds.length ? colLower : colLower;
+      const colName = colLower;
       issues.push({
         level: "error",
         code: "FK_COLUMN_COLLISION",
@@ -842,17 +769,11 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
           `В таблице «${toEnt.name}» несколько связей пытаются использовать одну и ту же FK-колонку «${colName}». ` +
           `Это приведёт к конфликту имён (невозможно корректно сгенерировать FK/DDL).`,
         where: [toId, ...relIds],
-        suggestion:
-          "Задайте разные fk.column для этих связей (в инспекторе связи), либо удалите лишние связи.",
+        suggestion: "Задайте разные fk.column для этих связей (в инспекторе связи), либо удалите лишние связи.",
       });
     }
   }
 
-  /* =========================================================
-     NEW: циклы по FK (обязательные/необязательные)
-     ========================================================= */
-
-  // Граф зависимостей: child(to) -> parent(from)
   const nodes = entities.map((e) => e.id);
 
   const buildAdj = (onlyMandatory: boolean) => {
@@ -863,10 +784,9 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
       if (r.type !== "one-to-many" && r.type !== "one-to-one") continue;
       if (!entById.has(r.from) || !entById.has(r.to)) continue;
 
-      const nn = r.fk?.notNull !== false; // undefined -> true
+      const nn = r.fk?.notNull !== false;
       if (onlyMandatory && !nn) continue;
 
-      // self-loop отдельно (мы уже дали предупреждение), тут не считаем как SCC
       if (r.from === r.to) continue;
 
       const child = r.to;
@@ -897,7 +817,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
         .sort()
         .join(", ");
 
-      // предложим “разрыв” на первой связи из цикла
       let suggestion = "Сделайте одну из связей в цикле необязательной: fk.notNull=false (nullable FK).";
       if (relIds.length > 0) {
         const r0 = relationships.find((r) => r.id === relIds[0]);
@@ -920,13 +839,12 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
     }
   }
 
-  // менее критичные циклы (включая nullable FK)
   const adjAll = buildAdj(false);
   const sccsAll = tarjanScc(nodes, adjAll).filter((c) => c.length > 1);
 
   for (const comp of sccsAll) {
     const key = sccKey(comp);
-    if (mandatoryKeys.has(key)) continue; // уже показали как error
+    if (mandatoryKeys.has(key)) continue;
 
     const names = comp
       .map((id) => entById.get(id)?.name || id)
@@ -949,7 +867,6 @@ export function validateModel(entities: Entity[], relationships: Relationship[])
   return { ok, issues };
 }
 
-/* ---------- Вспомогательное ---------- */
 function fkCol(rootSingular: string, pkName: string) {
   const base = snake(pkName);
   const root = snake(rootSingular) + "_";

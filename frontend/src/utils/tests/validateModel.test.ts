@@ -72,7 +72,7 @@ describe("validateModel — empties / lonely / PK heuristics", () => {
   });
 
   it("EMPTY_ENTITY_WITH_RELS: пустая сущность участвует в связи -> info", () => {
-    const empty = ent("A"); // без атрибутов
+    const empty = ent("A"); 
     const b = ent("B", [attr("id", "UUID", true)]);
     const r = rel(b, empty, "one-to-many");
     const res = validateModel([empty, b], [r]);
@@ -95,7 +95,7 @@ describe("validateModel — empties / lonely / PK heuristics", () => {
   });
 
   it("IMPLICIT_PK_INFERRED: есть id UUID/INT, но не отмечен 🔑 -> info (PK будет использован)", () => {
-    const u = ent("User", [attr("id", "UUID"), attr("email", "TEXT")]); // id НЕ помечен как PK
+    const u = ent("User", [attr("id", "UUID"), attr("email", "TEXT")]); 
     const res = validateModel([u], []);
     expect(hasIssue(res, "IMPLICIT_PK_INFERRED")).toBe(true);
     expect(res.ok).toBe(true);
@@ -104,7 +104,7 @@ describe("validateModel — empties / lonely / PK heuristics", () => {
   it("LINK_TABLE_COMPOSITE_PK_HINT + LINK_TABLE_VIA_TWO_RELS: таблица с двумя *_id и двумя 1:N -> info", () => {
     const user = ent("User", [attr("id", "UUID", true)]);
     const role = ent("Role", [attr("id", "UUID", true)]);
-    const link = ent("UserRole", [attr("user_id", "UUID"), attr("role_id", "UUID")]); // без PK
+    const link = ent("UserRole", [attr("user_id", "UUID"), attr("role_id", "UUID")]); 
 
     const r1 = rel(user, link, "one-to-many");
     const r2 = rel(role, link, "one-to-many");
@@ -120,7 +120,7 @@ describe("validateModel — empties / lonely / PK heuristics", () => {
     const user = ent("User", [attr("id", "UUID", true)]);
     const role = ent("Role", [attr("id", "UUID", true)]);
     const linkLike = ent("UserRole", [attr("user_id", "UUID"), attr("role_id", "UUID")]);
-    const res = validateModel([user, role, linkLike], []); // без связей
+    const res = validateModel([user, role, linkLike], []);
     expect(hasIssue(res, "TWO_ID_TABLE_NO_MM")).toBe(true);
     expect(res.ok).toBe(true);
   });
@@ -137,7 +137,7 @@ describe("validateModel — self-link", () => {
   it("SELF_FK_TYPE_MISMATCH: self FK type != PK type -> error, ok=false", () => {
     const node = ent("Node", [
       attr("node_id", "UUID", true),
-      attr("parent_node_id", "INT"), // неверный тип
+      attr("parent_node_id", "INT"), 
     ]);
     const r = rel(node, node, "one-to-many");
     const res = validateModel([node], [r]);
@@ -158,7 +158,7 @@ describe("validateModel — self-link", () => {
 describe("validateModel — 1:N / 1:1", () => {
   it("FK_WILL_BE_ADDED: FK-столбца нет в to -> info", () => {
     const author = ent("Author", [attr("id", "UUID", true)]);
-    const book = ent("Book", [attr("title", "TEXT")]); // нет author_id
+    const book = ent("Book", [attr("title", "TEXT")]); 
     const r = rel(author, book, "one-to-many");
     const res = validateModel([author, book], [r]);
 
@@ -172,7 +172,7 @@ describe("validateModel — 1:N / 1:1", () => {
 
   it("FK_TYPE_MISMATCH: FK-столбец существует, но тип не совпадает с PK -> error, ok=false", () => {
     const author = ent("Author", [attr("id", "UUID", true)]);
-    const book = ent("Book", [attr("author_id", "INT")]); // конфликт: INT vs UUID
+    const book = ent("Book", [attr("author_id", "INT")]); 
     const r = rel(author, book, "one-to-many");
     const res = validateModel([author, book], [r]);
 
@@ -204,8 +204,6 @@ describe("validateModel — 1:N / 1:1", () => {
     const user = ent("User", [attr("id", "UUID", true)]);
     const account = ent("Account", [attr("id", "UUID", true)]);
     const order = ent("Order", [attr("id", "UUID", true)]);
-
-    // ВАЖНО: тут создаём relationship вручную, чтобы точно положить fk.column
     const r1: any = {
       id: "r1",
       from: user.id,
@@ -248,7 +246,7 @@ describe("validateModel — many-to-many", () => {
   it("EMPTY_LINK_ENTITY: явная линк-таблица пустая -> info", () => {
     const u = ent("User", [attr("id", "UUID", true)]);
     const r = ent("Role", [attr("id", "UUID", true)]);
-    const link = ent("user_role", []); // пустая
+    const link = ent("user_role", []);
     const mm = rel(u, r, "many-to-many");
 
     const res = validateModel([u, r, link], [mm]);
@@ -259,7 +257,7 @@ describe("validateModel — many-to-many", () => {
   it("LINK_FK_WILL_BE_ADDED: явная link-таблица без user_id/role_id -> info", () => {
     const u = ent("User", [attr("id", "UUID", true)]);
     const r = ent("Role", [attr("id", "UUID", true)]);
-    const link = ent("user_role", [attr("note", "TEXT")]); // нет FK-колонок
+    const link = ent("user_role", [attr("note", "TEXT")]); 
     const mm = rel(u, r, "many-to-many");
 
     const res = validateModel([u, r, link], [mm]);
@@ -270,7 +268,7 @@ describe("validateModel — many-to-many", () => {
   it("LINK_COMPOSITE_PK: явная link-таблица без PK -> info", () => {
     const post = ent("Post", [attr("id", "UUID", true)]);
     const tag = ent("Tag", [attr("id", "UUID", true)]);
-    const link = ent("post_tag", [attr("meta", "TEXT")]); // нет PK
+    const link = ent("post_tag", [attr("meta", "TEXT")]);
     const mm = rel(post, tag, "many-to-many");
 
     const res = validateModel([post, tag, link], [mm]);
@@ -331,8 +329,6 @@ describe("validateModel — FK cycles (graph/SCC)", () => {
     const A = ent("A", [attr("id", "UUID", true)]);
     const B = ent("B", [attr("id", "UUID", true)]);
     const C = ent("C", [attr("id", "UUID", true)]);
-
-    // ВАЖНО: rBC nullable, чтобы mandatory-cycle не сработал
     const rAB: any = { id: "rAB2", from: A.id, to: B.id, type: "one-to-many", fk: { notNull: true } };
     const rBC: any = { id: "rBC2", from: B.id, to: C.id, type: "one-to-many", fk: { notNull: false } };
     const rCA: any = { id: "rCA2", from: C.id, to: A.id, type: "one-to-many", fk: { notNull: true } };

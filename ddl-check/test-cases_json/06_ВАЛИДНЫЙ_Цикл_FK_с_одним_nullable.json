@@ -1,0 +1,72 @@
+{
+  "entities": [
+    {
+      "id": "e_a",
+      "name": "A",
+      "x": 40,
+      "y": 40,
+      "attributes": [
+        { "id": "a_a_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true }
+      ]
+    },
+    {
+      "id": "e_b",
+      "name": "B",
+      "x": 420,
+      "y": 40,
+      "attributes": [
+        { "id": "a_b_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true }
+      ]
+    },
+    {
+      "id": "e_c",
+      "name": "C",
+      "x": 240,
+      "y": 260,
+      "attributes": [
+        { "id": "a_c_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r_a_b",
+      "from": "e_a",
+      "to": "e_b",
+      "type": "one-to-many",
+      "fk": {
+        "column": "a_id",
+        "type": "UUID",
+        "notNull": false,
+        "onDelete": "CASCADE",
+        "index": true
+      }
+    },
+    {
+      "id": "r_b_c",
+      "from": "e_b",
+      "to": "e_c",
+      "type": "one-to-many",
+      "fk": {
+        "column": "b_id",
+        "type": "UUID",
+        "notNull": true,
+        "onDelete": "CASCADE",
+        "index": true
+      }
+    },
+    {
+      "id": "r_c_a",
+      "from": "e_c",
+      "to": "e_a",
+      "type": "one-to-many",
+      "fk": {
+        "column": "c_id",
+        "type": "UUID",
+        "notNull": true,
+        "onDelete": "CASCADE",
+        "index": true
+      }
+    }
+  ]
+}

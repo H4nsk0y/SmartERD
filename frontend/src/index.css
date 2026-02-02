@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Градиент для всей страницы */
+
 @layer base {
   body {
     @apply bg-gradient-to-br from-blue-100 via-indigo-100 to-indigo-200 min-h-screen;
@@ -12,13 +12,13 @@
   }
 }
 
-/* Высотная цепочка */
+
 html, body, #root {
   height: 100%;
   min-height: 100%;
 }
 
-/* === Компактные икон-кнопки для тулбара */
+
 .tool-btn-icon,
 .tool-btn-sliced {
   position: relative;
@@ -115,7 +115,7 @@ html, body, #root {
   pointer-events: none;
 }
 
-/* === Широкие кнопки для тулбара (иконка + подпись), когда compactToolbar=false */
+
 .tool-btn-wide {
   position: relative;
   display: inline-flex;

@@ -1,7 +1,6 @@
 import type { Entity, Relationship, Attribute } from "../../store/useERStore";
 import { nanoid } from "nanoid";
 
-// Быстрое создание атрибута
 export function attr(
   name: string,
   type: string = "UUID",
@@ -15,7 +14,6 @@ export function attr(
   };
 }
 
-// Быстрое создание сущности
 export function ent(
   name: string,
   attributes: Attribute[] = []
@@ -29,7 +27,6 @@ export function ent(
   };
 }
 
-// Быстрое создание связи
 export function rel(
   from: Entity,
   to: Entity,

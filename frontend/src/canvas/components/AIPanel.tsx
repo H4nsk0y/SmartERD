@@ -54,131 +54,210 @@ export default function AIPanel({ className = "" }: { className?: string }) {
   return (
     <aside
       className={[
-        "w-[420px] min-w-[360px] max-w-[520px] border-l border-gray-300 dark:border-gray-700",
-        "bg-white dark:bg-gray-900",
-        "flex flex-col min-h-0", 
+        "w-[420px] min-w-[360px] max-w-[520px]",
+        "border-l border-black/20 dark:border-white/10",
+        "bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-xl",
+        "flex flex-col min-h-0",
         className,
       ].join(" ")}
     >
-      {/* header */}
-      <div className="shrink-0 px-3 py-2 border-b border-gray-200 dark:border-gray-800">
-        <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">AI-помощник</div>
-        <div className="text-xs text-gray-500 dark:text-gray-400">Чат и генерация ER</div>
+      {/* Заголовок панели с градиентом */}
+      <div className="shrink-0 p-4 border-b border-black/10 dark:border-white/10 bg-gradient-to-r from-indigo-100/90 to-purple-100/90 dark:from-indigo-950/70 dark:to-purple-950/70">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-black/5 bg-black/5 text-gray-900 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-white">
+            🤖
+          </span>
+          <div className="min-w-0">
+            <div className="text-lg font-extrabold text-gray-900 dark:text-white">AI-помощник</div>
+            <div className="text-sm text-gray-700 dark:text-white/60">Чат и генерация ER-диаграмм</div>
+          </div>
+        </div>
       </div>
 
-      {/* content — отдельный скролл */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 pt-12 pb-4 space-y-12">
-        {/* ЧАТ */}
-        <section className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
-          <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-800 text-sm font-medium text-gray-800 dark:text-gray-100">
-            Чат
+      {/* Основной контент с прокруткой */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+        {/* Секция чата */}
+        <div className="rounded-[24px] border border-black/15 bg-white/90 p-5 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.1)] backdrop-blur-sm dark:border-white/15 dark:bg-gray-800/90">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xl">💬</span>
+            <div className="font-extrabold text-gray-900 dark:text-white">AI Чат</div>
+            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-gradient-to-r from-indigo-100 to-purple-100 dark:from-indigo-900/40 dark:to-purple-900/40 text-indigo-800 dark:text-indigo-200">
+              Умные ответы
+            </span>
           </div>
-          <div className="p-3 space-y-2">
-            <textarea
-              value={chatIn}
-              onChange={(e) => setChatIn(e.target.value)}
-              placeholder="Спроси у модели…"
-              className="w-full min-h-[84px] p-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
-            />
-            <div className="flex items-center gap-2">
+
+          <div className="space-y-4">
+            <div className="relative">
+              <textarea
+                value={chatIn}
+                onChange={(e) => setChatIn(e.target.value)}
+                placeholder="Спроси что-нибудь о структуре базы данных, нормализации, SQL оптимизации..."
+                className="w-full min-h-[120px] p-4 rounded-2xl border border-black/15 bg-white/80 text-gray-900 dark:border-white/15 dark:bg-gray-700/80 dark:text-white placeholder-gray-600 dark:placeholder-white/40 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:focus:ring-indigo-400/40 resize-none"
+              />
+              <div className="absolute bottom-3 right-3 text-xs text-gray-600 dark:text-white/50">
+                {chatIn.length}/2000
+              </div>
+            </div>
+
+            <div className="flex gap-3">
               <button
                 onClick={sendChat}
                 disabled={chatBusy || !chatIn.trim()}
-                className={[
-                  "inline-flex items-center justify-center gap-2",
-                  "h-9 px-3 rounded-lg text-sm font-medium",
-                  "bg-indigo-600 text-white disabled:opacity-60"
-                ].join(" ")}
+                className={`
+                  group relative flex-1 px-5 py-3 rounded-2xl text-sm font-bold text-white
+                  transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-lg
+                  ${chatBusy || !chatIn.trim()
+                    ? "bg-gradient-to-r from-gray-400 to-gray-500 dark:from-gray-700 dark:to-gray-800 cursor-not-allowed"
+                    : "bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 shadow-indigo-500/30"
+                  }
+                `}
               >
-                {chatBusy ? (
-                  <>
-                    <GifLoader />
-                    <span>Отправка…</span>
-                  </>
-                ) : (
-                  "Отправить"
-                )}
+                <span className="flex items-center justify-center gap-2">
+                  {chatBusy ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
+                      <span>Отправка...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-base">🚀</span>
+                      <span>Отправить запрос</span>
+                    </>
+                  )}
+                </span>
               </button>
 
               <button
                 onClick={() => { setChatIn(""); setChatOut(""); setChatErr(null); }}
-                className={[
-                  "h-9 px-3 rounded-lg text-sm font-medium",
-                  "border border-gray-300 dark:border-gray-700",
-                  "bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100"
-                ].join(" ")}
+                className="px-5 py-3 rounded-2xl text-sm font-bold border border-black/15 bg-white/80 text-gray-900 dark:border-white/15 dark:bg-gray-700/80 dark:text-white hover:bg-white dark:hover:bg-gray-700 transition-all duration-200 hover:scale-[1.02] shadow-sm"
               >
-                Сброс
+                <span className="flex items-center gap-2">
+                  <span className="text-base">↺</span>
+                  Сбросить
+                </span>
               </button>
             </div>
 
-            {chatErr && <div className="text-xs text-red-600">{chatErr}</div>}
+            {chatErr && (
+              <div className="rounded-2xl border border-red-300 bg-red-100/90 p-4 text-sm text-red-900 dark:border-red-800 dark:bg-red-900/40 dark:text-red-100">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">⚠️</span>
+                  <span className="font-semibold">Ошибка:</span>
+                  <span>{chatErr}</span>
+                </div>
+              </div>
+            )}
+
             {chatOut && (
-              <div className="mt-1 p-2 rounded-lg border border-gray-200 dark:border-gray-800 text-sm text-gray-800 dark:text-gray-100 whitespace-pre-wrap">
-                {chatOut}
+              <div className="mt-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-base">🤖</span>
+                  <div className="font-semibold text-gray-900 dark:text-white">Ответ AI:</div>
+                </div>
+                <div className="p-4 rounded-2xl border border-black/10 bg-black/[0.03] text-sm text-gray-800 dark:border-white/10 dark:bg-gray-700/80 dark:text-white/90 whitespace-pre-wrap leading-relaxed">
+                  {chatOut}
+                </div>
               </div>
             )}
           </div>
-        </section>
+        </div>
 
-        {/* ER */}
-        <section className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
-          <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-800 text-sm font-medium text-gray-800 dark:text-gray-100">
-            Генерация ER
+        {/* Секция генерации ER */}
+        <div className="rounded-[24px] border border-black/15 bg-white/90 p-5 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.1)] backdrop-blur-sm dark:border-white/15 dark:bg-gray-800/90">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xl">✨</span>
+            <div className="font-extrabold text-gray-900 dark:text-white">Генерация ER-диаграммы</div>
+            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-gradient-to-r from-amber-100 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/40 text-amber-800 dark:text-amber-200">
+              Бета-функция
+            </span>
           </div>
-          <div className="p-3 space-y-2">
-            <textarea
-              value={erIn}
-              onChange={(e) => setErIn(e.target.value)}
-              placeholder="Опиши предметную область, например: интернет-магазин с пользователями, товарами, корзиной и заказами…"
-              className="w-full min-h-[96px] p-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
-            />
-            <div className="flex items-center gap-2">
+
+          <div className="space-y-4">
+            <div className="relative">
+              <textarea
+                value={erIn}
+                onChange={(e) => setErIn(e.target.value)}
+                placeholder="Опишите предметную область:
+• Интернет-магазин с пользователями, товарами, корзиной
+• Блог с постами, комментариями, категориями
+• Система бронирования отелей с комнатами, гостями, бронями"
+                className="w-full min-h-[140px] p-4 rounded-2xl border border-black/15 bg-white/80 text-gray-900 dark:border-white/15 dark:bg-gray-700/80 dark:text-white placeholder-gray-600 dark:placeholder-white/40 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:focus:ring-indigo-400/40 resize-none"
+              />
+              <div className="absolute bottom-3 right-3 text-xs text-gray-600 dark:text-white/50">
+                {erIn.length}/3000
+              </div>
+            </div>
+
+            <div className="flex gap-3">
               <button
                 onClick={generateER}
                 disabled={erBusy || !erIn.trim()}
-                className={[
-                  "inline-flex items-center justify-center gap-2",
-                  "h-9 px-3 rounded-lg text-sm font-medium",
-                  "bg-indigo-600 text-white disabled:opacity-60"
-                ].join(" ")}
+                className={`
+                  group relative flex-1 px-5 py-3 rounded-2xl text-sm font-bold text-white
+                  transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-lg
+                  ${erBusy || !erIn.trim()
+                    ? "bg-gradient-to-r from-gray-400 to-gray-500 dark:from-gray-700 dark:to-gray-800 cursor-not-allowed"
+                    : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-500/30"
+                  }
+                `}
                 title="Сгенерировать диаграмму и вставить в редактор"
               >
-                {erBusy ? (
-                  <>
-                    <GifLoader />
-                    <span>Генерируется…</span>
-                  </>
-                ) : (
-                  "Сгенерировать и вставить"
-                )}
+                <span className="flex items-center justify-center gap-2">
+                  {erBusy ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
+                      <span>Генерация...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-base">⚡</span>
+                      <span>Сгенерировать ER-диаграмму</span>
+                    </>
+                  )}
+                </span>
               </button>
 
               <button
                 onClick={() => { setErIn(""); setErErr(null); }}
-                className={[
-                  "h-9 px-3 rounded-lg text-sm font-medium",
-                  "border border-gray-300 dark:border-gray-700",
-                  "bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100"
-                ].join(" ")}
+                className="px-5 py-3 rounded-2xl text-sm font-bold border border-black/15 bg-white/80 text-gray-900 dark:border-white/15 dark:bg-gray-700/80 dark:text-white hover:bg-white dark:hover:bg-gray-700 transition-all duration-200 hover:scale-[1.02] shadow-sm"
               >
-                Очистить поле
+                <span className="flex items-center gap-2">
+                  <span className="text-base">🗑️</span>
+                  Очистить
+                </span>
               </button>
             </div>
 
-            {erErr && <div className="text-xs text-red-600">{erErr}</div>}
-
-            <div className="text-[11px] text-gray-500 dark:text-gray-400">
-              После генерации переключись на вкладку «Editor» — диаграмма уже вставлена.
-            </div>
+            {erErr && (
+              <div className="rounded-2xl border border-red-300 bg-red-100/90 p-4 text-sm text-red-900 dark:border-red-800 dark:bg-red-900/40 dark:text-red-100">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">⚠️</span>
+                  <span className="font-semibold">Ошибка генерации:</span>
+                  <span>{erErr}</span>
+                </div>
+              </div>
+            )}
           </div>
-        </section>
+        </div>
+      </div>
+
+      {/* Статусная строка */}
+      <div className="shrink-0 px-4 py-2.5 text-xs text-gray-600 dark:text-white/50 border-t border-black/15 dark:border-white/15 bg-white/70 dark:bg-gray-800/80 backdrop-blur-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+              <span>AI готов к работе</span>
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-indigo-100/80 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200 text-[11px]">
+              GPT-4 Turbo
+            </span>
+          </div>
+          <div className="text-[11px] opacity-70">
+            SmartERD AI • v1.0
+          </div>
+        </div>
       </div>
     </aside>
   );
 }
-
-function GifLoader() {
-  return <img src="/loader.gif" alt="" className="h-4 w-4" />;
-}
-

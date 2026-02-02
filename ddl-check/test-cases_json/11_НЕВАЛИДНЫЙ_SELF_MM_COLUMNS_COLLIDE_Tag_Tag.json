@@ -1,0 +1,16 @@
+{
+  "entities": [
+    {
+      "id": "e_tag",
+      "name": "Tag",
+      "x": 120,
+      "y": 120,
+      "attributes": [
+        { "id": "a_tag_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true }
+      ]
+    }
+  ],
+  "relationships": [
+    { "id": "r_tag_tag_mm", "from": "e_tag", "to": "e_tag", "type": "many-to-many" }
+  ]
+}

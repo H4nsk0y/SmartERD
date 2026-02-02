@@ -1,0 +1,244 @@
+{
+  "entities": [
+    {
+      "id": "e_customer",
+      "name": "Customer",
+      "x": 60,
+      "y": 60,
+      "attributes": [
+        { "id": "a_customer_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_customer_email", "name": "email", "type": "VARCHAR(120)", "unique": true, "notNull": true },
+        { "id": "a_customer_name", "name": "name", "type": "VARCHAR(80)", "notNull": true },
+        { "id": "a_customer_phone", "name": "phone", "type": "VARCHAR(30)", "notNull": false }
+      ]
+    },
+    {
+      "id": "e_address",
+      "name": "Address",
+      "x": 420,
+      "y": 60,
+      "attributes": [
+        { "id": "a_address_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_address_label", "name": "label", "type": "VARCHAR(40)", "notNull": true },
+        { "id": "a_address_line1", "name": "line1", "type": "VARCHAR(120)", "notNull": true },
+        { "id": "a_address_city", "name": "city", "type": "VARCHAR(60)", "notNull": true },
+        { "id": "a_address_country", "name": "country", "type": "VARCHAR(60)", "notNull": true }
+      ]
+    },
+    {
+      "id": "e_brand",
+      "name": "Brand",
+      "x": 780,
+      "y": 60,
+      "attributes": [
+        { "id": "a_brand_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_brand_name", "name": "name", "type": "VARCHAR(120)", "unique": true, "notNull": true }
+      ]
+    },
+    {
+      "id": "e_category",
+      "name": "Category",
+      "x": 780,
+      "y": 240,
+      "attributes": [
+        { "id": "a_category_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_category_title", "name": "title", "type": "VARCHAR(120)", "unique": true, "notNull": true }
+      ]
+    },
+    {
+      "id": "e_product",
+      "name": "Product",
+      "x": 420,
+      "y": 240,
+      "attributes": [
+        { "id": "a_product_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_product_sku", "name": "sku", "type": "VARCHAR(40)", "unique": true, "notNull": true },
+        { "id": "a_product_title", "name": "title", "type": "VARCHAR(120)", "notNull": true },
+        { "id": "a_product_price", "name": "price", "type": "DECIMAL(10,2)", "notNull": true },
+        { "id": "a_product_stock", "name": "stock", "type": "INT", "notNull": true },
+        { "id": "a_product_isActive", "name": "isActive", "type": "BOOLEAN", "notNull": true }
+      ]
+    },
+    {
+      "id": "e_cart",
+      "name": "Cart",
+      "x": 60,
+      "y": 420,
+      "attributes": [
+        { "id": "a_cart_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_cart_createdAt", "name": "createdAt", "type": "TIMESTAMP", "notNull": true }
+      ]
+    },
+    {
+      "id": "e_cart_item",
+      "name": "CartItem",
+      "x": 420,
+      "y": 420,
+      "attributes": [
+        { "id": "a_cart_item_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_cart_item_quantity", "name": "quantity", "type": "INT", "notNull": true }
+      ]
+    },
+    {
+      "id": "e_order",
+      "name": "Order",
+      "x": 60,
+      "y": 600,
+      "attributes": [
+        { "id": "a_order_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_order_createdAt", "name": "createdAt", "type": "TIMESTAMP", "notNull": true },
+        { "id": "a_order_status", "name": "status", "type": "VARCHAR(40)", "notNull": true },
+        { "id": "a_order_total", "name": "total", "type": "DECIMAL(10,2)", "notNull": true }
+      ]
+    },
+    {
+      "id": "e_order_item",
+      "name": "OrderItem",
+      "x": 420,
+      "y": 600,
+      "attributes": [
+        { "id": "a_order_item_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_order_item_quantity", "name": "quantity", "type": "INT", "notNull": true },
+        { "id": "a_order_item_unitPrice", "name": "unitPrice", "type": "DECIMAL(10,2)", "notNull": true }
+      ]
+    },
+    {
+      "id": "e_payment",
+      "name": "Payment",
+      "x": 780,
+      "y": 600,
+      "attributes": [
+        { "id": "a_payment_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_payment_method", "name": "method", "type": "VARCHAR(40)", "notNull": true },
+        { "id": "a_payment_status", "name": "status", "type": "VARCHAR(40)", "notNull": true },
+        { "id": "a_payment_amount", "name": "amount", "type": "DECIMAL(10,2)", "notNull": true },
+        { "id": "a_payment_paidAt", "name": "paidAt", "type": "TIMESTAMP", "notNull": false }
+      ]
+    },
+    {
+      "id": "e_shipment",
+      "name": "Shipment",
+      "x": 780,
+      "y": 780,
+      "attributes": [
+        { "id": "a_shipment_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_shipment_carrier", "name": "carrier", "type": "VARCHAR(60)", "notNull": true },
+        { "id": "a_shipment_trackingNo", "name": "trackingNo", "type": "VARCHAR(80)", "unique": true, "notNull": false },
+        { "id": "a_shipment_status", "name": "status", "type": "VARCHAR(40)", "notNull": true },
+        { "id": "a_shipment_shippedAt", "name": "shippedAt", "type": "TIMESTAMP", "notNull": false }
+      ]
+    },
+    {
+      "id": "e_review",
+      "name": "Review",
+      "x": 420,
+      "y": 780,
+      "attributes": [
+        { "id": "a_review_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_review_rating", "name": "rating", "type": "INT", "notNull": true },
+        { "id": "a_review_body", "name": "body", "type": "TEXT", "notNull": false },
+        { "id": "a_review_createdAt", "name": "createdAt", "type": "TIMESTAMP", "notNull": true }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r_customer_addresses",
+      "from": "e_customer",
+      "to": "e_address",
+      "type": "one-to-many",
+      "fk": { "column": "customer_id", "type": "UUID", "notNull": true, "onDelete": "CASCADE", "index": true }
+    },
+    {
+      "id": "r_brand_products",
+      "from": "e_brand",
+      "to": "e_product",
+      "type": "one-to-many",
+      "fk": { "column": "brand_id", "type": "UUID", "notNull": true, "onDelete": "RESTRICT", "index": true }
+    },
+    {
+      "id": "r_product_categories",
+      "from": "e_product",
+      "to": "e_category",
+      "type": "many-to-many",
+      "link": { "tableName": "product_category_link", "leftColumn": "product_id", "rightColumn": "category_id", "compositePrimaryKey": true }
+    },
+    {
+      "id": "r_customer_cart_1to1",
+      "from": "e_customer",
+      "to": "e_cart",
+      "type": "one-to-one",
+      "fk": { "column": "customer_id", "type": "UUID", "notNull": true, "unique": true, "onDelete": "CASCADE", "index": true }
+    },
+    {
+      "id": "r_cart_items",
+      "from": "e_cart",
+      "to": "e_cart_item",
+      "type": "one-to-many",
+      "fk": { "column": "cart_id", "type": "UUID", "notNull": true, "onDelete": "CASCADE", "index": true }
+    },
+    {
+      "id": "r_product_cart_items",
+      "from": "e_product",
+      "to": "e_cart_item",
+      "type": "one-to-many",
+      "fk": { "column": "product_id", "type": "UUID", "notNull": true, "onDelete": "RESTRICT", "index": true }
+    },
+    {
+      "id": "r_customer_orders",
+      "from": "e_customer",
+      "to": "e_order",
+      "type": "one-to-many",
+      "fk": { "column": "customer_id", "type": "UUID", "notNull": true, "onDelete": "CASCADE", "index": true }
+    },
+    {
+      "id": "r_address_orders_shipping",
+      "from": "e_address",
+      "to": "e_order",
+      "type": "one-to-many",
+      "fk": { "column": "shipping_address_id", "type": "UUID", "notNull": true, "onDelete": "RESTRICT", "index": true }
+    },
+    {
+      "id": "r_order_items",
+      "from": "e_order",
+      "to": "e_order_item",
+      "type": "one-to-many",
+      "fk": { "column": "order_id", "type": "UUID", "notNull": true, "onDelete": "CASCADE", "index": true }
+    },
+    {
+      "id": "r_product_order_items",
+      "from": "e_product",
+      "to": "e_order_item",
+      "type": "one-to-many",
+      "fk": { "column": "product_id", "type": "UUID", "notNull": true, "onDelete": "RESTRICT", "index": true }
+    },
+    {
+      "id": "r_order_payment_1to1",
+      "from": "e_order",
+      "to": "e_payment",
+      "type": "one-to-one",
+      "fk": { "column": "order_id", "type": "UUID", "notNull": true, "unique": true, "onDelete": "CASCADE", "index": true }
+    },
+    {
+      "id": "r_order_shipment_1to1",
+      "from": "e_order",
+      "to": "e_shipment",
+      "type": "one-to-one",
+      "fk": { "column": "order_id", "type": "UUID", "notNull": true, "unique": true, "onDelete": "CASCADE", "index": true }
+    },
+    {
+      "id": "r_customer_reviews",
+      "from": "e_customer",
+      "to": "e_review",
+      "type": "one-to-many",
+      "fk": { "column": "customer_id", "type": "UUID", "notNull": true, "onDelete": "CASCADE", "index": true }
+    },
+    {
+      "id": "r_product_reviews",
+      "from": "e_product",
+      "to": "e_review",
+      "type": "one-to-many",
+      "fk": { "column": "product_id", "type": "UUID", "notNull": true, "onDelete": "CASCADE", "index": true }
+    }
+  ]
+}

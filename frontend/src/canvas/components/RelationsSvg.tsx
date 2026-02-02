@@ -1,22 +1,5 @@
 // frontend/src/canvas/components/RelationsSvg.tsx
-/**
- * RelationsSvg — SVG-слой связей: видимая линия + невидимый хит-путь.
- * Нотация: Crow’s Foot (почти как в учебнике), с optionality для стороны FK:
- *  - 0..1  : o|
- *  - 1..1  : ||
- *  - 0..N  : o<   (по умолчанию для стороны "many")
- *
- * Упрощение: минимальная кратность на стороне "one" (например "обязателен хотя бы один child")
- * не задаётся (нет отдельной настройки), поэтому там показываем только 0..1 или 1..1
- * по fk.notNull.
- *
- * ВАЖНО: для one-to-many и one-to-one считаем:
- *   from = сторона "one"
- *   to   = сторона "many" (для 1:N) или сторона FK (для 1:1)
- *
- * fk.notNull берём из relationship.fk?.notNull (если undefined — считаем true, как у вас по умолчанию).
- */
-import React from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { Size } from "../types";
 import { edgePointRayIntersect } from "../geom";
 
@@ -65,22 +48,16 @@ type LoopItem = {
 type Item = LineItem | LoopItem;
 
 function markersForKind(kind: RelationKind, fkNotNull?: boolean): { start?: string; end?: string } {
-  const nn = fkNotNull !== false; // undefined -> true (как у вас по умолчанию)
+  const nn = fkNotNull !== false;
 
   if (kind === "many-to-many") {
-    // По смыслу: 0..N с обеих сторон
     return { start: "erd-zero-many", end: "erd-zero-many" };
   }
 
   if (kind === "one-to-many") {
-    // from = one (сколько "one" на один "many") -> 1..1 или 0..1 по fk.notNull
-    // to   = many (сколько "many" на один "one") -> 0..N
     return { start: nn ? "erd-one-one" : "erd-zero-one", end: "erd-zero-many" };
   }
 
-  // one-to-one
-  // from = one (сколько "one" на один "to") -> 1..1 или 0..1 по fk.notNull (на стороне FK)
-  // to   = FK-side (сколько "to" на один "from") -> 0..1 (по умолчанию)
   return { start: nn ? "erd-one-one" : "erd-zero-one", end: "erd-zero-one" };
 }
 
@@ -97,12 +74,41 @@ export default function RelationsSvg({
   worldSize,
   renderLabel,
 }: RelationsSvgProps) {
-  const getEntity = React.useCallback(
+  const getEntity = useCallback(
     (id: string) => entities.find((e) => e.id === id),
     [entities]
   );
 
-  const makeSelfLoop = React.useCallback((box: { x: number; y: number; w: number; h: number }) => {
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [forceClearHover, setForceClearHover] = useState<boolean>(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setActiveMenu(null);
+        onHover?.(null);
+        setForceClearHover(true);
+        setTimeout(() => setForceClearHover(false), 100);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [onHover]);
+
+  
+  useEffect(() => {
+    if (pulseToken) {
+      setForceClearHover(true);
+      setTimeout(() => setForceClearHover(false), 300);
+    }
+  }, [pulseToken]);
+
+  const makeSelfLoop = useCallback((box: { x: number; y: number; w: number; h: number }) => {
     const { x, y, w, h } = box;
     const start = { x: x + w, y: y + h / 2 };
 
@@ -113,12 +119,11 @@ export default function RelationsSvg({
     const c2 = { x: start.x + rx, y: y - ry };
     const end = { x: x + w * 0.65, y: y - 10 };
 
-    // Чтобы хит-путь захватывал «хвост» под маркеры
     const tailDir = { x: end.x - c2.x, y: end.y - c2.y };
     const tailLen = Math.hypot(tailDir.x, tailDir.y) || 1;
     const ux = tailDir.x / tailLen;
     const uy = tailDir.y / tailLen;
-    const endExt = { x: end.x + ux * 18, y: end.y + uy * 18 };
+    const endExt = { x: end.x + ux * 22, y: end.y + uy * 22 };
 
     const d = `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${end.x} ${end.y}`;
     const dHit = `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${endExt.x} ${endExt.y}`;
@@ -128,7 +133,8 @@ export default function RelationsSvg({
     return { d, dHit, mid };
   }, []);
 
-  const items = React.useMemo<Item[]>(() => {
+ 
+  const items = useMemo<Item[]>(() => {
     const out: Item[] = [];
 
     for (const r of relationships) {
@@ -136,6 +142,7 @@ export default function RelationsSvg({
       const to = getEntity(r.to);
       if (!from || !to) continue;
 
+   
       const fw = sizes[from.id]?.w ?? 224;
       const fh = sizes[from.id]?.h ?? 80;
       const tw = sizes[to.id]?.w ?? 224;
@@ -143,7 +150,7 @@ export default function RelationsSvg({
 
       const fkNotNull = r.fk?.notNull;
 
-      // self-loop
+      
       if (r.from === r.to) {
         const loop = makeSelfLoop({ x: from.x, y: from.y, w: fw, h: fh });
         out.push({
@@ -161,8 +168,9 @@ export default function RelationsSvg({
       const fromC = { x: from.x + fw / 2, y: from.y + fh / 2 };
       const toC = { x: to.x + tw / 2, y: to.y + th / 2 };
 
-      const p1 = edgePointRayIntersect(fromC, toC, fw / 2, fh / 2, 8);
-      const p2 = edgePointRayIntersect(toC, fromC, tw / 2, th / 2, 8);
+      
+      const p1 = edgePointRayIntersect(fromC, toC, fw / 2, fh / 2, 10);
+      const p2 = edgePointRayIntersect(toC, fromC, tw / 2, th / 2, 10);
       const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
 
       out.push({ shape: "line", id: r.id, type: r.type, fkNotNull, p1, p2, mid });
@@ -171,6 +179,188 @@ export default function RelationsSvg({
     return out;
   }, [relationships, getEntity, sizes, makeSelfLoop]);
 
+  const getConnectionStyle = useCallback((isHovered: boolean, isSelected: boolean, isPulsed: boolean) => {
+    let baseStyle = {
+      stroke: "#6366f1",
+      strokeWidth: 2.5,
+      dashArray: "none",
+      opacity: 1,
+    };
+
+    if (isPulsed) {
+      return {
+        ...baseStyle,
+        stroke: "#8b5cf6",
+        strokeWidth: 3.5,
+        dashArray: "8,4",
+        opacity: 0.9,
+      };
+    }
+
+    if (isSelected) {
+      return {
+        ...baseStyle,
+        stroke: "#a78bfa",
+        strokeWidth: 3,
+        dashArray: "6,3",
+        opacity: 1,
+      };
+    }
+
+    if (isHovered) {
+      return {
+        ...baseStyle,
+        stroke: "#8b5cf6",
+        strokeWidth: 3.5,
+        dashArray: "8,4",
+        opacity: 1,
+      };
+    }
+
+    return baseStyle;
+  }, []);
+
+  const renderConnection = useCallback((item: Item, isHovered: boolean, isSelected: boolean, isPulsed: boolean) => {
+    const { start, end } = markersForKind(item.type, item.fkNotNull);
+    const markerStart = start ? `url(#${start})` : undefined;
+    const markerEnd = end ? `url(#${end})` : undefined;
+
+    const style = getConnectionStyle(isHovered, isSelected, isPulsed);
+    const gradientId = isHovered ? "connection-gradient-hover" : 
+                      isSelected ? "connection-gradient-selected" : 
+                      "connection-gradient";
+
+    let connectionClasses = "animated-connection";
+    if (isHovered) connectionClasses += " connection-hover";
+    if (isSelected) connectionClasses += " connection-selected";
+    if (isPulsed) connectionClasses += " connection-pulsed";
+
+    if (item.shape === "line") {
+      const dx = item.p2.x - item.p1.x;
+      const dy = item.p2.y - item.p1.y;
+      const L = Math.hypot(dx, dy) || 1;
+      const ux = dx / L;
+      const uy = dy / L;
+
+      const dVisible = `M ${item.p1.x} ${item.p1.y} L ${item.p2.x} ${item.p2.y}`;
+      const p2ext = { x: item.p2.x + ux * 20, y: item.p2.y + uy * 20 };
+      const dHit = `M ${item.p1.x} ${item.p1.y} L ${p2ext.x} ${p2ext.y}`;
+
+      return (
+        <g key={item.id}>
+          
+          <path
+            d={dVisible}
+            fill="none"
+            stroke="rgba(99, 102, 241, 0.15)"
+            strokeLinecap="round"
+            strokeWidth={style.strokeWidth + 8}
+            markerStart={markerStart}
+            markerEnd={markerEnd}
+            className={connectionClasses}
+            pointerEvents="none"
+          />
+
+          
+          <path
+            d={dVisible}
+            fill="none"
+            stroke={`url(#${gradientId})`}
+            strokeLinecap="round"
+            strokeWidth={style.strokeWidth}
+            strokeDasharray={style.dashArray}
+            markerStart={markerStart}
+            markerEnd={markerEnd}
+            className={connectionClasses}
+            pointerEvents="none"
+            style={{ filter: isHovered || isSelected ? 'url(#glow)' : 'none' }}
+          />
+
+          
+          <path
+            d={dHit}
+            fill="none"
+            stroke="transparent"
+            strokeWidth={24}
+            strokeLinecap="round"
+            className="animated-connection"
+            style={{ 
+              pointerEvents: "stroke", 
+              cursor: "pointer",
+            }}
+            onMouseEnter={() => {
+              onHover?.(item.id);
+            }}
+            onMouseLeave={() => {
+              onHover?.(null);
+            }}
+            onClick={(ev) => {
+              ev.stopPropagation();
+              setForceClearHover(true);
+              setTimeout(() => setForceClearHover(false), 50);
+              onClick?.(item.id);
+            }}
+          />
+        </g>
+      );
+    }
+
+    
+    return (
+      <g key={item.id}>
+       
+        <path
+          d={item.d}
+          fill="none"
+          stroke="rgba(99, 102, 241, 0.15)"
+          strokeLinecap="round"
+          strokeWidth={style.strokeWidth + 8}
+          markerStart={markerStart}
+          markerEnd={markerEnd}
+          className={connectionClasses}
+          pointerEvents="none"
+        />
+
+        
+        <path
+          d={item.d}
+          fill="none"
+          stroke={`url(#${gradientId})`}
+          strokeLinecap="round"
+          strokeWidth={style.strokeWidth}
+          strokeDasharray={style.dashArray}
+          markerStart={markerStart}
+          markerEnd={markerEnd}
+          className={connectionClasses}
+          pointerEvents="none"
+          style={{ filter: isHovered || isSelected ? 'url(#glow)' : 'none' }}
+        />
+
+        
+        <path
+          d={item.dHit}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={28}
+          strokeLinecap="round"
+          className="animated-connection"
+          style={{ 
+            pointerEvents: "stroke", 
+            cursor: "pointer",
+          }}
+          onMouseEnter={() => onHover?.(item.id)}
+          onMouseLeave={() => onHover?.(null)}
+          onClick={(ev) => {
+            ev.stopPropagation();
+            setForceClearHover(true);
+            setTimeout(() => setForceClearHover(false), 50);
+            onClick?.(item.id);
+          }}
+        />
+      </g>
+    );
+  }, [getConnectionStyle, onHover, onClick]);
+
   return (
     <div className="absolute top-0 left-0" style={{ width: worldSize.w, height: worldSize.h, overflow: "visible" }}>
       <svg
@@ -178,68 +368,107 @@ export default function RelationsSvg({
         width={worldSize.w}
         height={worldSize.h}
         style={{ overflow: "visible", pointerEvents: "auto" }}
+        onClick={() => {
+          setForceClearHover(true);
+          setTimeout(() => setForceClearHover(false), 50);
+        }}
       >
         <style>{`
-          @keyframes erd-flow-hover { to { stroke-dashoffset: -240; } }
-          .erd-line { vector-effect: non-scaling-stroke; }
-          .erd-line-anim { stroke-dasharray: 14 10; stroke-dashoffset: 0; animation: erd-flow-hover 2.2s linear infinite; }
-           @keyframes erd-pulse {
-            0%   { stroke-opacity: 0.75; stroke-width: 10; }
-            100% { stroke-opacity: 0;    stroke-width: 26; }
+          @keyframes pulse-glow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
           }
-          .erd-line-pulse { animation: erd-pulse 1.1s ease-out 0s 1; }
+          @keyframes dash-flow {
+            to { stroke-dashoffset: -20; }
+          }
+          @keyframes connection-pulse {
+            0% { stroke-width: 3; opacity: 0.8; }
+            50% { stroke-width: 5; opacity: 0.4; }
+            100% { stroke-width: 3; opacity: 0.8; }
+          }
+          @keyframes connection-reset {
+            0% { opacity: 0.5; }
+            100% { opacity: 1; }
+          }
+          .animated-connection {
+            transition: opacity 0.15s ease, filter 0.15s ease;
+          }
+          .connection-hover {
+            animation: dash-flow 1s linear infinite, pulse-glow 2s ease-in-out infinite;
+          }
+          .connection-selected {
+            animation: pulse-glow 3s ease-in-out infinite;
+          }
+          .connection-pulsed {
+            animation: connection-pulse 0.8s ease-in-out;
+          }
+          .connection-reset {
+            animation: connection-reset 0.3s ease-out;
+          }
         `}</style>
 
         <defs>
-          {/* Crow’s Foot markers (комбинированные). orient="auto-start-reverse" позволяет одинаково
-              выглядеть на markerStart и markerEnd. */}
+          <linearGradient id="connection-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#818cf8" />
+            <stop offset="50%" stopColor="#6366f1" />
+            <stop offset="100%" stopColor="#4f46e5" />
+          </linearGradient>
+          
+          <linearGradient id="connection-gradient-hover" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#a78bfa" />
+            <stop offset="100%" stopColor="#8b5cf6" />
+          </linearGradient>
+          
+          <linearGradient id="connection-gradient-selected" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#c4b5fd" />
+            <stop offset="100%" stopColor="#a78bfa" />
+          </linearGradient>
 
-          {/* 0..1 : o| */}
+         
           <marker
             id="erd-zero-one"
-            markerWidth="22"
-            markerHeight="14"
-            refX="20"
-            refY="7"
+            markerWidth="24"
+            markerHeight="16"
+            refX="22"
+            refY="8"
             orient="auto-start-reverse"
             markerUnits="userSpaceOnUse"
           >
-            <circle cx="6" cy="7" r="3.2" stroke="context-stroke" strokeWidth="2" fill="none" />
-            <path d="M20,1 L20,13" stroke="context-stroke" strokeWidth="2.4" strokeLinecap="round" fill="none" />
+            <circle cx="7" cy="8" r="3.5" stroke="context-stroke" strokeWidth="2" fill="none" />
+            <path d="M22,2 L22,14" stroke="context-stroke" strokeWidth="2.5" strokeLinecap="round" fill="none" />
           </marker>
 
-          {/* 1..1 : || */}
           <marker
             id="erd-one-one"
             markerWidth="22"
-            markerHeight="14"
+            markerHeight="16"
             refX="20"
-            refY="7"
+            refY="8"
             orient="auto-start-reverse"
             markerUnits="userSpaceOnUse"
           >
             <path
-              d="M16,1 L16,13 M20,1 L20,13"
+              d="M16,2 L16,14 M20,2 L20,14"
               stroke="context-stroke"
-              strokeWidth="2.4"
+              strokeWidth="2.5"
               strokeLinecap="round"
               fill="none"
             />
           </marker>
 
-          {/* 0..N : o< */}
+          
           <marker
             id="erd-zero-many"
-            markerWidth="26"
-            markerHeight="14"
-            refX="24"
-            refY="7"
+            markerWidth="28"
+            markerHeight="18"
+            refX="26"
+            refY="9"
             orient="auto-start-reverse"
             markerUnits="userSpaceOnUse"
           >
-            <circle cx="6" cy="7" r="3.2" stroke="context-stroke" strokeWidth="2" fill="none" />
+            <circle cx="7" cy="9" r="3.5" stroke="context-stroke" strokeWidth="2" fill="none" />
             <path
-              d="M24,7 L12,1 M24,7 L12,7 M24,7 L12,13"
+              d="M14,9 L26,2 M14,9 L26,9 M14,9 L26,16"
               stroke="context-stroke"
               strokeWidth="2.2"
               strokeLinecap="round"
@@ -247,128 +476,52 @@ export default function RelationsSvg({
             />
           </marker>
 
-          {/* 1..N : |< (оставлено на будущее, если появится настройка обязательности со стороны "one") */}
           <marker
             id="erd-one-many"
-            markerWidth="26"
-            markerHeight="14"
-            refX="24"
-            refY="7"
+            markerWidth="28"
+            markerHeight="18"
+            refX="26"
+            refY="9"
             orient="auto-start-reverse"
             markerUnits="userSpaceOnUse"
           >
-            <path d="M10,1 L10,13" stroke="context-stroke" strokeWidth="2.4" strokeLinecap="round" fill="none" />
+            <path d="M12,2 L12,16" stroke="context-stroke" strokeWidth="2.5" strokeLinecap="round" fill="none" />
             <path
-              d="M24,7 L12,1 M24,7 L12,7 M24,7 L12,13"
+              d="M14,9 L26,2 M14,9 L26,9 M14,9 L26,16"
               stroke="context-stroke"
               strokeWidth="2.2"
               strokeLinecap="round"
               fill="none"
             />
           </marker>
+
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
 
-        {items.map((e: Item) => {
-          const hovered = hoveredId === e.id;
-          const pulsed = pulsedId === e.id;
-          const selected = selectedId === e.id;
-          const strokeColor = hovered ? "#8b5cf6" : selected ? "#a78bfa" : "#6366f1";
-          const strokeWidth = hovered || selected ? 4 : 3;
+        {items.map((item) => {
+          const isHovered = !forceClearHover && hoveredId === item.id;
+          const isSelected = selectedId === item.id;
+          const isPulsed = pulsedId === item.id;
 
-          const { start, end } = markersForKind(e.type, e.fkNotNull);
-          const markerStart = start ? `url(#${start})` : undefined;
-          const markerEnd = end ? `url(#${end})` : undefined;
-
-          if (e.shape === "line") {
-            const dx = e.p2.x - e.p1.x;
-            const dy = e.p2.y - e.p1.y;
-            const L = Math.hypot(dx, dy) || 1;
-            const ux = dx / L;
-            const uy = dy / L;
-
-            const dVisible = `M ${e.p1.x} ${e.p1.y} L ${e.p2.x} ${e.p2.y}`;
-
-            // чуть удлиняем хит-путь, чтобы удобно кликать возле конца
-            const p2ext = { x: e.p2.x + ux * 18, y: e.p2.y + uy * 18 };
-            const dHit = `M ${e.p1.x} ${e.p1.y} L ${p2ext.x} ${p2ext.y}`;
-
-            return (
-              <g key={e.id}>
-                <path
-                  d={dVisible}
-                  fill="none"
-                  stroke={strokeColor}
-                  strokeLinecap="round"
-                  strokeWidth={strokeWidth}
-                  markerStart={markerStart}
-                  markerEnd={markerEnd}
-                  className={`erd-line ${hovered ? "erd-line-anim" : ""}`}
-                  pointerEvents="none"
-                />
-                <path
-                  d={dHit}
-                  fill="none"
-                  stroke="#000"
-                  strokeOpacity={0}
-                  strokeWidth={22}
-                  strokeLinecap="round"
-                  className="erd-line"
-                  style={{ pointerEvents: "stroke", cursor: "pointer" }}
-                  onMouseEnter={() => onHover?.(e.id)}
-                  onMouseLeave={() => onHover?.(null)}
-                  onClick={(ev) => {
-                    ev.stopPropagation();
-                    onClick?.(e.id);
-                  }}
-                />
-              </g>
-            );
-          }
-
-          // loop
-          return (
-            <g key={e.id}>
-              <path
-                d={e.d}
-                fill="none"
-                stroke={strokeColor}
-                strokeLinecap="round"
-                strokeWidth={strokeWidth}
-                markerStart={markerStart}
-                markerEnd={markerEnd}
-                className={`erd-line ${hovered ? "erd-line-anim" : ""}`}
-                pointerEvents="none"
-              />
-              <path
-                d={e.dHit}
-                fill="none"
-                stroke="#000"
-                strokeOpacity={0}
-                strokeWidth={22}
-                strokeLinecap="round"
-                className="erd-line"
-                style={{ pointerEvents: "stroke", cursor: "pointer" }}
-                onMouseEnter={() => onHover?.(e.id)}
-                onMouseLeave={() => onHover?.(null)}
-                onClick={(ev) => {
-                  ev.stopPropagation();
-                  onClick?.(e.id);
-                }}
-              />
-            </g>
-          );
+          return renderConnection(item, isHovered, isSelected, isPulsed);
         })}
       </svg>
 
       {renderLabel &&
-        items.map((e: Item) =>
-          renderLabel({
+        items.map((e: Item) => {
+          return renderLabel({
             id: e.id,
             x: e.mid.x,
             y: e.mid.y,
             kind: e.type,
-          })
-        )}
+          });
+        })}
     </div>
   );
 }

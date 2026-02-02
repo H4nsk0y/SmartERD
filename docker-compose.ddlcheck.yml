@@ -1,0 +1,35 @@
+services:
+  pg_ddl:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ddlcheck
+    volumes:
+      - ./ddl-check/scripts:/scripts:ro
+
+  mysql_ddl:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ddlcheck
+    volumes:
+      - ./ddl-check/scripts:/scripts:ro
+
+  mssql_ddl:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Str0ng!Passw0rd"
+    volumes:
+      - ./ddl-check/scripts:/scripts:ro
+
+  sqlite_ddl:
+    image: alpine:3.20
+    command: sh -lc "apk add --no-cache sqlite && tail -f /dev/null"
+    volumes:
+      - ./ddl-check/scripts:/scripts:ro
+      - sqlite-data:/db
+
+volumes:
+  sqlite-data:
