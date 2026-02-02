@@ -128,7 +128,7 @@ describe("applyNormalizationAction: 1NF extraction", () => {
 
     const issues = analyzeNormalization([User], []);
     const i = issueByCode(issues, "NF1_MULTIVALUE_FIELD");
-    const actionDrop = i.actions[1]; // dropOriginal: true
+    const actionDrop = i.actions[1]; 
 
     const out = applyNormalizationAction(actionDrop, [User], []);
     const child = findEntityByName(out.entities, "User_tags");
@@ -149,7 +149,7 @@ describe("analyzeNormalization: 2NF (explicit M:N link table)", () => {
     const User = ent("User", [attr("id", "UUID", true)]);
     const Role = ent("Role", [attr("id", "UUID", true)]);
 
-    // имя должно чётко содержать оба корня
+    
     const Link = ent("user_role", [
       attr("user_id", "UUID"),
       attr("role_id", "UUID"),
@@ -190,7 +190,7 @@ describe("analyzeNormalization: 2NF (explicit M:N link table)", () => {
     const outUser = findEntityByName(out.entities, "User");
     const outLink = findEntityByName(out.entities, "user_role");
 
-    expect(hasAttr(outUser, "email")).toBe(true);      // normalizeAttrNameForTarget: user_email -> email
+    expect(hasAttr(outUser, "email")).toBe(true);     
     expect(hasAttr(outLink, "user_email")).toBe(false);
   });
 });
@@ -269,7 +269,7 @@ describe("link-table smell => CREATE_MM_REL_FROM_LINK_TABLE", () => {
     const Role = ent("Role", [attr("id", "UUID", true)]);
 
     const Link = ent("user_role", [
-      attr("id", "UUID", true),      // может быть, может не быть — неважно
+      attr("id", "UUID", true),      
       attr("user_id", "UUID"),
       attr("role_id", "UUID"),
       attr("user_email", "TEXT"),
@@ -291,7 +291,7 @@ describe("link-table smell => CREATE_MM_REL_FROM_LINK_TABLE", () => {
       attr("user_email", "TEXT"),
     ]);
 
-    // предположим, что ранее авто-фиксы уже создали 1:N к link-таблице
+    
     const r1 = rel(User, Link, "one-to-many");
     r1.fk = { column: "user_id", notNull: true, onDelete: "CASCADE", index: true };
 
@@ -304,7 +304,7 @@ describe("link-table smell => CREATE_MM_REL_FROM_LINK_TABLE", () => {
 
     const out = applyNormalizationAction(action, [User, Role, Link], [r1, r2]);
 
-    // есть M:N
+    
     const mm = out.relationships.find(
       (r) =>
         r.type === "many-to-many" &&
@@ -315,7 +315,7 @@ describe("link-table smell => CREATE_MM_REL_FROM_LINK_TABLE", () => {
     expect((mm.link?.leftColumn || "").toLowerCase()).toBe("user_id");
     expect((mm.link?.rightColumn || "").toLowerCase()).toBe("role_id");
 
-    // 1:N удалены
+   
     expect(findRel(out.relationships, User.id, Link.id, "one-to-many", "user_id")).toBeUndefined();
     expect(findRel(out.relationships, Role.id, Link.id, "one-to-many", "role_id")).toBeUndefined();
   });

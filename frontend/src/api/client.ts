@@ -12,7 +12,6 @@ export async function apiJson<T>(
 
   const headers = new Headers(opts.headers || {});
   if (!headers.has("Content-Type") && opts.body) {
-    // важно для кириллицы в Windows + в целом корректно
     headers.set("Content-Type", "application/json; charset=utf-8");
   }
   if (opts.token) {
@@ -30,7 +29,6 @@ export async function apiJson<T>(
   try {
     json = text ? JSON.parse(text) : null;
   } catch {
-    // если вдруг сервер вернул HTML/текст
   }
 
   if (!res.ok) {

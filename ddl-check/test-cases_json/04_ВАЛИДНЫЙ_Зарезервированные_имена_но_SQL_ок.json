@@ -1,0 +1,39 @@
+{
+  "entities": [
+    {
+      "id": "e_select",
+      "name": "Select",
+      "x": 40,
+      "y": 40,
+      "attributes": [
+        { "id": "a_select_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_select_from", "name": "from", "type": "VARCHAR(40)", "notNull": true }
+      ]
+    },
+    {
+      "id": "e_event",
+      "name": "Event",
+      "x": 420,
+      "y": 40,
+      "attributes": [
+        { "id": "a_event_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_event_title", "name": "title", "type": "VARCHAR(120)", "notNull": true }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r_select_events",
+      "from": "e_select",
+      "to": "e_event",
+      "type": "one-to-many",
+      "fk": {
+        "column": "select_id",
+        "type": "UUID",
+        "notNull": true,
+        "onDelete": "CASCADE",
+        "index": true
+      }
+    }
+  ]
+}

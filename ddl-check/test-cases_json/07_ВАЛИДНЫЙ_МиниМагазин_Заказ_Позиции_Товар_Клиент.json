@@ -1,0 +1,73 @@
+{
+  "entities": [
+    {
+      "id": "e_customer",
+      "name": "Customer",
+      "x": 60,
+      "y": 60,
+      "attributes": [
+        { "id": "a_customer_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_customer_email", "name": "email", "type": "VARCHAR(120)", "unique": true, "notNull": true },
+        { "id": "a_customer_name", "name": "name", "type": "VARCHAR(80)", "notNull": true }
+      ]
+    },
+    {
+      "id": "e_product",
+      "name": "Product",
+      "x": 420,
+      "y": 60,
+      "attributes": [
+        { "id": "a_product_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_product_sku", "name": "sku", "type": "VARCHAR(40)", "unique": true, "notNull": true },
+        { "id": "a_product_title", "name": "title", "type": "VARCHAR(120)", "notNull": true },
+        { "id": "a_product_price", "name": "price", "type": "DECIMAL(10,2)", "notNull": true }
+      ]
+    },
+    {
+      "id": "e_order",
+      "name": "Order",
+      "x": 60,
+      "y": 300,
+      "attributes": [
+        { "id": "a_order_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_order_createdAt", "name": "createdAt", "type": "TIMESTAMP", "notNull": true },
+        { "id": "a_order_status", "name": "status", "type": "VARCHAR(40)", "notNull": true },
+        { "id": "a_order_total", "name": "total", "type": "DECIMAL(10,2)", "notNull": true }
+      ]
+    },
+    {
+      "id": "e_order_item",
+      "name": "OrderItem",
+      "x": 420,
+      "y": 300,
+      "attributes": [
+        { "id": "a_order_item_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_order_item_quantity", "name": "quantity", "type": "INT", "notNull": true },
+        { "id": "a_order_item_unitPrice", "name": "unitPrice", "type": "DECIMAL(10,2)", "notNull": true }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r_customer_orders",
+      "from": "e_customer",
+      "to": "e_order",
+      "type": "one-to-many",
+      "fk": { "column": "customer_id", "type": "UUID", "notNull": true, "onDelete": "CASCADE", "index": true }
+    },
+    {
+      "id": "r_order_items",
+      "from": "e_order",
+      "to": "e_order_item",
+      "type": "one-to-many",
+      "fk": { "column": "order_id", "type": "UUID", "notNull": true, "onDelete": "CASCADE", "index": true }
+    },
+    {
+      "id": "r_product_order_items",
+      "from": "e_product",
+      "to": "e_order_item",
+      "type": "one-to-many",
+      "fk": { "column": "product_id", "type": "UUID", "notNull": true, "onDelete": "RESTRICT", "index": true }
+    }
+  ]
+}

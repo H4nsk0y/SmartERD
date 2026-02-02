@@ -1,219 +1,141 @@
-// src/canvas/components/RelationsLayer.tsx
-/**
- * RelationsLayer — стабильный hover.
- * этот файл отвечает за отрисовку связей между сущностями на канвасе.
-*/
-
+// frontend/src/canvas/components/RelationLabel.tsx
 import React from "react";
-import type { RelationKind, Size } from "../types";
-import { edgePointRayIntersect } from "../geom";
+import type { RelationKind } from "./RelationsSvg";
 
-type Attr = { name: string; type: string; isPrimaryKey?: boolean };
-type Ent = { id: string; name: string; x: number; y: number; attributes?: Attr[] };
-type Rel = { id: string; from: string; to: string; type: RelationKind };
-
-export default function RelationsLayer({
-  entities,
-  relationships,
-  sizes,
-  hoveredRelId,
-  selectedRelId,
-  onHover,
-  onSelect,
-  onChangeType,
+export default function RelationLabel({
+  id,
+  x,
+  y,
+  kind,
+  open,
+  onToggle,
+  onPick,
 }: {
-  entities: Ent[];
-  relationships: Rel[];
-  sizes: Record<string, Size>;
-  hoveredRelId: string | null;
-  selectedRelId: string | null;
-  onHover: (id: string | null) => void;
-  onSelect: (id: string) => void;
-  onChangeType?: (id: string, next: RelationKind) => void;
+  id: string;
+  x: number;
+  y: number;
+  kind: RelationKind;
+  open: boolean;
+  onToggle: (id: string) => void;
+  onPick: (id: string, next: RelationKind) => void;
 }) {
-  
-  const byId = React.useMemo(() => {
-    const m = new Map<string, Ent>();
-    for (const e of entities) m.set(e.id, e);
-    return m;
-  }, [entities]);
-
-  
-  const sticky = React.useRef<Record<string, number>>({});
-  const [, force] = React.useState(0);
-  const now = () => performance.now();
-
-  const setSticky = (id: string) => {
-    sticky.current[id] = now() + 140; 
-    force((x) => x ^ 1); 
-  };
-  const clearExpired = () => {
-    const t = now();
-    let changed = false;
-    for (const k of Object.keys(sticky.current)) {
-      if (sticky.current[k] < t) {
-        delete sticky.current[k];
-        changed = true;
-      }
-    }
-    if (changed) force((x) => x ^ 1);
-  };
-
-  React.useEffect(() => {
-    const id = requestAnimationFrame(function loop() {
-      clearExpired();
-      requestAnimationFrame(loop);
-    });
-    return () => cancelAnimationFrame(id);
-  }, []);
+  const labelText = kind === "one-to-one" ? "1:1" : kind === "one-to-many" ? "1:N" : "N:M";
 
   return (
-    <svg
-      className="absolute top-0 left-0 z-10"
-      width={50000}
-      height={50000}
-      style={{ overflow: "visible", pointerEvents: "none" }}
-      shapeRendering="geometricPrecision"
+    <div
+      className="absolute z-50 pointer-events-auto"
+      style={{
+        left: x - 28,
+        top: y - 32,
+        width: 70,
+        height: 32,
+        transform: "translateZ(0)",
+      }}
     >
-      <style>{`
-        @keyframes erd-flow { to { stroke-dashoffset: -180; } }
-        .erd-anim { stroke-dasharray: 12 8; stroke-dashoffset: 0; animation: erd-flow 1.6s linear infinite; }
-      `}</style>
+      {/* Контейнер метки */}
+      <div
+        className={`relative rounded-lg px-2 py-1 text-center select-none shadow-lg border backdrop-blur-sm transition-all duration-200 ${
+          open ? "z-50" : "z-40"
+        }`}
+        style={{
+          background: open 
+            ? "rgba(139, 92, 246, 0.95)" 
+            : "rgba(17, 24, 39, 0.85)",
+          color: open ? "#ffffff" : "#e5e7eb",
+          borderColor: open 
+            ? "rgba(255, 255, 255, 0.3)" 
+            : "rgba(139, 92, 246, 0.5)",
+          borderWidth: "1.5px",
+          boxShadow: open 
+            ? "0 4px 12px rgba(139, 92, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)" 
+            : "0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
+          cursor: "pointer",
+          fontSize: "13px",
+          fontWeight: "600",
+          letterSpacing: "0.3px",
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle(id);
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-center gap-1">
+          <span className="leading-none">{labelText}</span>
+          <svg 
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`} 
+            fill="currentColor" 
+            viewBox="0 0 20 20"
+          >
+            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </div>
 
-      <defs>
-        <marker id="arrow-base" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L9,3 z" fill="#6366f1" pointerEvents="none" />
-        </marker>
-        <marker id="arrow-hover" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L9,3 z" fill="#8b5cf6" pointerEvents="none" />
-        </marker>
-        <marker id="arrow-selected" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L9,3 z" fill="#a78bfa" pointerEvents="none" />
-        </marker>
-      </defs>
-
-      {relationships.map((r) => {
-        const from = byId.get(r.from);
-        const to = byId.get(r.to);
-        if (!from || !to) return null;
-
-        const fw = sizes[from.id]?.w ?? 224;
-        const fh = sizes[from.id]?.h ?? 80;
-        const tw = sizes[to.id]?.w ?? 224;
-        const th = sizes[to.id]?.h ?? 80;
-
-        const fromC = { x: from.x + fw / 2, y: from.y + fh / 2 };
-        const toC = { x: to.x + tw / 2, y: to.y + th / 2 };
-
-        const p1 = edgePointRayIntersect(fromC, toC, fw / 2, fh / 2, 8);
-        const p2 = edgePointRayIntersect(toC, fromC, tw / 2, th / 2, 8);
-
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const L = Math.hypot(dx, dy) || 1;
-        const ux = dx / L;
-        const uy = dy / L;
-        const p2ext = { x: p2.x + ux * 14, y: p2.y + uy * 14 };
-
-        const d = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
-        const dHit = `M ${p1.x} ${p1.y} L ${p2ext.x} ${p2ext.y}`;
-
-        const midX = (p1.x + p2.x) / 2;
-        const midY = (p1.y + p2.y) / 2;
-
-        const hoveredRaw = hoveredRelId === r.id;
-        const hovered = hoveredRaw || sticky.current[r.id] > now();
-        const selected = selectedRelId === r.id;
-
-        const strokeColor = hovered ? "#8b5cf6" : selected ? "#a78bfa" : "#6366f1";
-        const markerId = hovered ? "arrow-hover" : selected ? "arrow-selected" : "arrow-base";
-        const strokeWidth = hovered || selected ? 4 : 3;
-
-        return (
-          <g key={r.id} style={{ pointerEvents: "none" }}>
-            <path
-              d={d}
-              fill="none"
-              stroke={strokeColor}
-              strokeLinecap="round"
-              strokeWidth={strokeWidth}
-              markerEnd={`url(#${markerId})`}
-              vectorEffect="non-scaling-stroke"
-              className={hovered ? "erd-anim" : undefined}
-              pointerEvents="none"
-            />
-
-            <path
-              d={dHit}
-              fill="none"
-              stroke="transparent"
-              strokeWidth={18}
-              strokeLinecap="round"
-              vectorEffect="non-scaling-stroke"
-              style={{ pointerEvents: "stroke", cursor: "pointer" }}
-              onMouseEnter={() => {
-                setSticky(r.id);
-                onHover(r.id);
-              }}
-              onMouseLeave={() => {
-                setSticky(r.id);
-                onHover(null);
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect(r.id);
-              }}
-            />
-
-            <foreignObject
-              x={midX - 20}
-              y={midY - 28}
-              width={64}
-              height={26}
-              style={{ pointerEvents: "auto", overflow: "visible" }}
-            >
-              <div
-                className="relative z-50 text-[11px] rounded px-1 py-0.5 text-center select-none shadow-sm"
-                style={{
-                  background: "rgba(17,24,39,0.70)",
-                  color: "#F3F4F6",
-                  border: "1px solid rgba(139,92,246,0.5)",
-                  backdropFilter: "blur(2px)",
-                  cursor: "pointer",
+        {/* Выпадающее меню */}
+        {open && (
+          <div
+            className="absolute left-1/2 transform -translate-x-1/2 top-8 rounded-lg shadow-2xl border transition-all duration-200 overflow-hidden z-[60]"
+            style={{
+              background: "rgba(17, 24, 39, 0.98)",
+              borderColor: "rgba(139, 92, 246, 0.6)",
+              backdropFilter: "blur(12px)",
+              minWidth: "100px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="py-1">
+              <button
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-600/30 transition-colors flex items-center justify-between ${
+                  kind === "one-to-one" ? "text-indigo-300 bg-indigo-600/20" : "text-gray-300"
+                }`}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  onPick(id, "one-to-one"); 
                 }}
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
               >
-                <span className="font-semibold">
-                  {r.type === "one-to-one" ? "1:1" : r.type === "one-to-many" ? "1:N" : "N:M"}
-                </span>
-
-                {onChangeType && (
-                  <div
-                    className="absolute top-6 left-1/2 -translate-x-1/2 rounded text-xs w-24"
-                    style={{
-                      background: "rgba(17,24,39,0.95)",
-                      color: "#F9FAFB",
-                      border: "1px solid rgba(99,102,241,0.6)",
-                      backdropFilter: "blur(2px)",
-                    }}
-                  >
-                    <div className="px-2 py-1 hover:bg-indigo-600/30 cursor-pointer" onClick={(e) => { e.stopPropagation(); onChangeType(r.id, "one-to-one"); }}>
-                      1:1
-                    </div>
-                    <div className="px-2 py-1 hover:bg-indigo-600/30 cursor-pointer" onClick={(e) => { e.stopPropagation(); onChangeType(r.id, "one-to-many"); }}>
-                      1:N
-                    </div>
-                    <div className="px-2 py-1 hover:bg-indigo-600/30 cursor-pointer" onClick={(e) => { e.stopPropagation(); onChangeType(r.id, "many-to-many"); }}>
-                      N:M
-                    </div>
-                  </div>
+                <span>1:1</span>
+                {kind === "one-to-one" && (
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
                 )}
-              </div>
-            </foreignObject>
-          </g>
-        );
-      })}
-    </svg>
+              </button>
+              <button
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-600/30 transition-colors flex items-center justify-between ${
+                  kind === "one-to-many" ? "text-indigo-300 bg-indigo-600/20" : "text-gray-300"
+                }`}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  onPick(id, "one-to-many"); 
+                }}
+              >
+                <span>1:N</span>
+                {kind === "one-to-many" && (
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+              <button
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-600/30 transition-colors flex items-center justify-between ${
+                  kind === "many-to-many" ? "text-indigo-300 bg-indigo-600/20" : "text-gray-300"
+                }`}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  onPick(id, "many-to-many"); 
+                }}
+              >
+                <span>N:M</span>
+                {kind === "many-to-many" && (
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

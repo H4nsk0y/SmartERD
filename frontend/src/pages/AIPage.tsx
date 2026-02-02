@@ -7,6 +7,25 @@ type UiMsg = {
   ts: number;
 };
 
+const useTheme = () => {
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  
+  useEffect(() => {
+    const isDark = document.documentElement.classList.contains('dark');
+    setTheme(isDark ? 'dark' : 'light');
+    
+    const observer = new MutationObserver(() => {
+      const isDark = document.documentElement.classList.contains('dark');
+      setTheme(isDark ? 'dark' : 'light');
+    });
+    
+    observer.observe(document.documentElement, { attributes: true });
+    return () => observer.disconnect();
+  }, []);
+  
+  return theme;
+};
+
 function Svg({
   children,
   className = "",
@@ -102,7 +121,7 @@ function StatusDot({ busy }: { busy: boolean }) {
           )}
         />
       </span>
-      <span className="text-xs text-white/60">{busy ? "Обрабатываю…" : "Готов к диалогу"}</span>
+      <span className="text-xs text-white/60 dark:text-white/60">{busy ? "Обрабатываю…" : "Готов к диалогу"}</span>
     </span>
   );
 }
@@ -118,7 +137,7 @@ function PromptChip({
     <button
       type="button"
       onClick={onClick}
-      className="px-3 py-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white/75 text-xs transition active:scale-[0.98]"
+      className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white/50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-white/75 text-xs transition active:scale-[0.98] shadow-sm"
       title="Вставить в поле"
     >
       {text}
@@ -128,14 +147,15 @@ function PromptChip({
 
 function CodeBlock({ code }: { code: string }) {
   return (
-    <pre className="mt-2 rounded-xl border border-white/10 bg-black/25 p-3 overflow-auto text-xs leading-relaxed">
-      <code className="text-white/85 whitespace-pre">{code}</code>
+    <pre className="mt-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-black/25 p-3 overflow-auto text-xs leading-relaxed shadow-inner">
+      <code className="text-slate-800 dark:text-white/85 whitespace-pre font-mono">
+        {code}
+      </code>
     </pre>
   );
 }
 
 function RenderMessage({ content }: { content: string }) {
-  // Очень простой рендер: поддержка ```code``` блоков без библиотек
   const parts = useMemo(() => {
     const out: Array<{ t: "text" | "code"; v: string }> = [];
     const s = content ?? "";
@@ -160,7 +180,7 @@ function RenderMessage({ content }: { content: string }) {
         p.t === "code" ? (
           <CodeBlock key={i} code={p.v} />
         ) : (
-          <span key={i} className="text-white/85">
+          <span key={i} className="text-slate-800 dark:text-white/85">
             {p.v}
           </span>
         )
@@ -173,11 +193,11 @@ function TypingIndicator() {
   return (
     <div className="inline-flex items-center gap-2">
       <span className="inline-flex gap-1">
-        <span className="h-2 w-2 rounded-full bg-white/60 motion-safe:animate-[aiDot_1.1s_ease-in-out_infinite]" />
-        <span className="h-2 w-2 rounded-full bg-white/60 motion-safe:animate-[aiDot_1.1s_ease-in-out_infinite_0.15s]" />
-        <span className="h-2 w-2 rounded-full bg-white/60 motion-safe:animate-[aiDot_1.1s_ease-in-out_infinite_0.3s]" />
+        <span className="h-2 w-2 rounded-full bg-slate-500 dark:bg-white/60 motion-safe:animate-[aiDot_1.1s_ease-in-out_infinite]" />
+        <span className="h-2 w-2 rounded-full bg-slate-500 dark:bg-white/60 motion-safe:animate-[aiDot_1.1s_ease-in-out_infinite_0.15s]" />
+        <span className="h-2 w-2 rounded-full bg-slate-500 dark:bg-white/60 motion-safe:animate-[aiDot_1.1s_ease-in-out_infinite_0.3s]" />
       </span>
-      <span className="text-xs text-white/60">Печатает…</span>
+      <span className="text-xs text-slate-500 dark:text-white/60">Печатает…</span>
     </div>
   );
 }
@@ -207,32 +227,32 @@ function Bubble({
       title={new Date(ts).toLocaleString()}
     >
       <div className={classNames("max-w-[92%] sm:max-w-[78%] flex items-start gap-3", isUser && "flex-row-reverse")}>
-        {/* avatar */}
+    
         <div
           className={classNames(
-            "shrink-0 h-9 w-9 rounded-2xl border border-white/10 bg-white/5 backdrop-blur flex items-center justify-center",
-            isUser ? "text-indigo-200" : "text-violet-200"
+            "shrink-0 h-9 w-9 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5 backdrop-blur flex items-center justify-center shadow-sm",
+            isUser ? "text-indigo-600 dark:text-indigo-200" : "text-violet-600 dark:text-violet-200"
           )}
         >
           {isUser ? Icons.user : Icons.bot}
         </div>
 
-        {/* bubble */}
+
         <div
           className={classNames(
-            "relative rounded-2xl px-4 py-3 border backdrop-blur",
+            "relative rounded-2xl px-4 py-3 border backdrop-blur shadow-sm",
             isUser
-              ? "bg-gradient-to-r from-indigo-600/45 to-violet-600/35 border-white/10"
-              : "bg-white/5 border-white/10",
-            isLastAssistant && !isUser ? "ring-1 ring-violet-300/30" : ""
+              ? "bg-gradient-to-r from-indigo-50 to-violet-50 dark:from-indigo-600/45 dark:to-violet-600/35 border-indigo-100 dark:border-white/10"
+              : "bg-white/80 dark:bg-white/5 border-slate-200 dark:border-white/10",
+            isLastAssistant && !isUser ? "ring-1 ring-violet-300/30 shadow-md" : ""
           )}
         >
-          {/* hover tools */}
+   
           {!isUser && onCopy && (
             <button
               type="button"
               onClick={onCopy}
-              className="absolute -top-3 -right-3 h-8 w-8 rounded-2xl border border-white/10 bg-white/10 hover:bg-white/15 text-white/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+              className="absolute -top-3 -right-3 h-8 w-8 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/15 text-slate-600 dark:text-white/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-md"
               aria-label="Скопировать ответ"
               title="Скопировать"
             >
@@ -247,18 +267,46 @@ function Bubble({
   );
 }
 
+function Background() {
+  return (
+    <div className="pointer-events-none fixed inset-0 -z-10">
+
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:hidden" />
+      <div className="absolute -top-28 -left-28 w-[560px] h-[560px] rounded-full bg-indigo-500/15 blur-3xl dark:hidden motion-safe:animate-[floatSlow_7s_ease-in-out_infinite]" />
+      <div className="absolute -bottom-28 -right-28 w-[620px] h-[620px] rounded-full bg-fuchsia-500/10 blur-3xl dark:hidden motion-safe:animate-[floatSlow_9s_ease-in-out_infinite]" />
+      
+      <div className="hidden dark:block absolute inset-0 bg-gradient-to-b from-[#0b1220] via-[#0b1220] to-[#070b14]" />
+      <div className="hidden dark:block absolute -top-28 -left-28 w-[560px] h-[560px] rounded-full bg-indigo-600/25 blur-3xl motion-safe:animate-[floatSlow_7s_ease-in-out_infinite]" />
+      <div className="hidden dark:block absolute -bottom-28 -right-28 w-[620px] h-[620px] rounded-full bg-fuchsia-500/15 blur-3xl motion-safe:animate-[floatSlow_9s_ease-in-out_infinite]" />
+
+      <div className="absolute inset-0 opacity-[0.12] dark:opacity-[0.18]">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(0,0,0,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.08)_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:64px_64px]" />
+      </div>
+      
+      <div className="absolute inset-0 opacity-30 dark:hidden bg-[radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.08),transparent_45%),radial-gradient(circle_at_80%_30%,rgba(168,85,247,0.06),transparent_40%),radial-gradient(circle_at_50%_90%,rgba(56,189,248,0.04),transparent_40%)]" />
+
+      <div className="hidden dark:block absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.22),transparent_45%),radial-gradient(circle_at_80%_30%,rgba(168,85,247,0.18),transparent_40%),radial-gradient(circle_at_50%_90%,rgba(56,189,248,0.12),transparent_40%)]" />
+    </div>
+  );
+}
+
 export default function AIPage() {
   const [messages, setMessages] = useState<UiMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
+  const [mounted, setMounted] = useState(false);
+  const theme = useTheme();
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const r = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(r);
+  }, []);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    // автоскролл вниз
     el.scrollTop = el.scrollHeight;
   }, [messages, busy]);
 
@@ -284,7 +332,6 @@ export default function AIPage() {
     setInput("");
 
     try {
-      // Отправляем контекст последних сообщений (чтобы AI мог продолжать диалог)
       const ctx = [...messages, userMsg].slice(-16).map(
         (m): ChatMessage => ({
           role: m.role,
@@ -329,13 +376,15 @@ export default function AIPage() {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
-      // no-op
+
     }
   };
 
   return (
-    <div className="relative w-full min-h-[calc(100vh-64px)] flex items-center justify-center px-4 py-10 overflow-hidden">
-      {/* local keyframes */}
+    <div className="relative w-full min-h-screen overflow-y-auto">
+      <Background />
+      
+ 
       <style>{`
         @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes floatSlow { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
@@ -343,30 +392,26 @@ export default function AIPage() {
         @keyframes shimmer { 0% { transform: translateX(-40%); } 100% { transform: translateX(140%); } }
       `}</style>
 
-      {/* фон */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-28 -left-28 w-[560px] h-[560px] rounded-full bg-indigo-600/20 blur-3xl motion-safe:animate-[floatSlow_7s_ease-in-out_infinite]" />
-        <div className="absolute -bottom-28 -right-28 w-[620px] h-[620px] rounded-full bg-fuchsia-500/14 blur-3xl motion-safe:animate-[floatSlow_9s_ease-in-out_infinite]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0b1220] via-[#0b1220] to-[#070b14]" />
-        {/* техно-сетка */}
-        <div className="absolute inset-0 opacity-[0.10] [background-image:linear-gradient(to_right,rgba(255,255,255,0.10)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:52px_52px]" />
-        {/* мягкие рад. пятна */}
-        <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.22),transparent_45%),radial-gradient(circle_at_80%_30%,rgba(168,85,247,0.18),transparent_40%),radial-gradient(circle_at_55%_85%,rgba(56,189,248,0.12),transparent_40%)]" />
-      </div>
+      <div className="relative w-full max-w-6xl mx-auto px-4 py-10">
+        <div className={classNames(
+          "rounded-[32px] border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/[0.04] shadow-2xl backdrop-blur-xl p-6 md:p-8",
+          mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4",
+          "transition-all duration-500"
+        )}>
 
-      {/* контент */}
-      <div className="relative w-full max-w-6xl">
-        <div className="rounded-[32px] border border-white/10 bg-white/[0.04] shadow-2xl backdrop-blur-xl p-6 md:p-8">
+          <div className="pointer-events-none absolute top-0 left-0 right-0 h-[3px]">
+            <div className="h-full bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-80" />
+            <div className="h-full blur-md bg-gradient-to-r from-transparent via-indigo-400 to-transparent opacity-70" />
+          </div>
           <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-stretch">
-            {/* левая панель */}
             <div className="lg:w-[360px] shrink-0">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="h-11 w-11 rounded-2xl border border-white/10 bg-white/5 text-violet-200 flex items-center justify-center">
+                  <div className="h-11 w-11 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5 text-violet-600 dark:text-violet-200 flex items-center justify-center shadow-sm">
                     {Icons.spark}
                   </div>
                   <div>
-                    <div className="text-white text-lg font-semibold">AI помощник</div>
+                    <div className="text-slate-900 dark:text-white text-lg font-semibold">AI помощник</div>
                     <div className="mt-1">
                       <StatusDot busy={busy} />
                     </div>
@@ -377,7 +422,7 @@ export default function AIPage() {
                   type="button"
                   onClick={copyLastAssistant}
                   disabled={lastAssistantIndex < 0}
-                  className="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 text-white/80 flex items-center justify-center transition disabled:opacity-40"
+                  className="h-10 w-10 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-600 dark:text-white/80 flex items-center justify-center transition shadow-sm disabled:opacity-40"
                   title="Скопировать последний ответ"
                   aria-label="Скопировать последний ответ"
                 >
@@ -385,8 +430,12 @@ export default function AIPage() {
                 </button>
               </div>
 
-              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="text-sm font-semibold text-white">Быстрые запросы</div>
+              <div className={classNames(
+                "mt-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5 p-4 shadow-sm",
+                mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
+                "transition-all duration-500 delay-100"
+              )}>
+                <div className="text-sm font-semibold text-slate-900 dark:text-white">Быстрые запросы</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {prompts.map((p, i) => (
                     <PromptChip
@@ -398,11 +447,15 @@ export default function AIPage() {
                 </div>
               </div>
 
-              <details className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <summary className="cursor-pointer select-none text-sm font-semibold text-white">
+              <details className={classNames(
+                "mt-4 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5 p-4 shadow-sm",
+                mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
+                "transition-all duration-500 delay-150"
+              )}>
+                <summary className="cursor-pointer select-none text-sm font-semibold text-slate-900 dark:text-white">
                   Как использовать
                 </summary>
-                <div className="mt-3 space-y-3 text-sm text-white/70 leading-relaxed">
+                <div className="mt-3 space-y-3 text-sm text-slate-600 dark:text-white/70 leading-relaxed">
                   <div>
                     1) Задай любой вопрос по базам данных, SQL или проектированию. 
                   </div>
@@ -416,24 +469,30 @@ export default function AIPage() {
               </details>
 
               {err && (
-                <div className="mt-4 rounded-2xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200">
+                <div className={classNames(
+                  "mt-4 rounded-2xl border border-red-300 dark:border-red-400/30 bg-red-50/80 dark:bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-200",
+                  mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
+                  "transition-all duration-500 delay-200"
+                )}>
                   {err}
                 </div>
               )}
             </div>
 
-            {/* чат */}
             <div className="flex-1 min-w-0">
-              <div className="rounded-[28px] border border-white/10 bg-white/5 shadow-[0_0_0_1px_rgba(255,255,255,0.05)] overflow-hidden flex flex-col min-h-[560px]">
-                {/* header */}
-                <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-white/80">
-                    <span className="h-9 w-9 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-violet-200">
+              <div className={classNames(
+                "rounded-[28px] border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5 shadow-[0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)] overflow-hidden flex flex-col min-h-[560px]",
+                mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4",
+                "transition-all duration-500 delay-100"
+              )}>
+                <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10 flex items-center justify-between gap-3 bg-white/50 dark:bg-white/[0.03]">
+                  <div className="flex items-center gap-2 text-slate-700 dark:text-white/80">
+                    <span className="h-9 w-9 rounded-2xl bg-white/80 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex items-center justify-center text-violet-600 dark:text-violet-200 shadow-sm">
                       {Icons.bot}
                     </span>
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-white">Диалог</div>
-                      <div className="text-xs text-white/55">
+                      <div className="text-sm font-semibold text-slate-900 dark:text-white">Диалог</div>
+                      <div className="text-xs text-slate-500 dark:text-white/55">
                         Enter — отправить, Shift+Enter — новая строка
                       </div>
                     </div>
@@ -443,7 +502,7 @@ export default function AIPage() {
                     <button
                       type="button"
                       onClick={clearInput}
-                      className="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 text-white/80 flex items-center justify-center transition"
+                      className="h-10 w-10 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-600 dark:text-white/80 flex items-center justify-center transition shadow-sm"
                       title="Сброс поля"
                       aria-label="Сброс поля"
                     >
@@ -452,7 +511,7 @@ export default function AIPage() {
                     <button
                       type="button"
                       onClick={clearChat}
-                      className="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 text-white/80 flex items-center justify-center transition"
+                      className="h-10 w-10 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-600 dark:text-white/80 flex items-center justify-center transition shadow-sm"
                       title="Очистить чат"
                       aria-label="Очистить чат"
                     >
@@ -461,13 +520,16 @@ export default function AIPage() {
                   </div>
                 </div>
 
-                {/* messages */}
                 <div
                   ref={scrollRef}
                   className="flex-1 overflow-auto px-4 py-4 space-y-3"
                 >
                   {messages.length === 0 ? (
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
+                    <div className={classNames(
+                      "rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5 p-5 text-sm text-slate-600 dark:text-white/70 shadow-sm",
+                      mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
+                      "transition-all duration-500"
+                    )}>
                       Напиши запрос снизу. Можешь начать с одного из быстрых шаблонов слева.
                     </div>
                   ) : (
@@ -485,7 +547,6 @@ export default function AIPage() {
                                   try {
                                     await navigator.clipboard.writeText(m.content || "");
                                   } catch {
-                                    // no-op
                                   }
                                 }
                               : undefined
@@ -496,10 +557,10 @@ export default function AIPage() {
                       {busy && (
                         <div className="w-full flex justify-start">
                           <div className="max-w-[92%] sm:max-w-[78%] flex items-start gap-3">
-                            <div className="shrink-0 h-9 w-9 rounded-2xl border border-white/10 bg-white/5 text-violet-200 flex items-center justify-center">
+                            <div className="shrink-0 h-9 w-9 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5 text-violet-600 dark:text-violet-200 flex items-center justify-center shadow-sm">
                               {Icons.bot}
                             </div>
-                            <div className="rounded-2xl px-4 py-3 border border-white/10 bg-white/5">
+                            <div className="rounded-2xl px-4 py-3 border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5 shadow-sm">
                               <TypingIndicator />
                             </div>
                           </div>
@@ -509,8 +570,7 @@ export default function AIPage() {
                   )}
                 </div>
 
-                {/* input */}
-                <div className="border-t border-white/10 p-3">
+                <div className="border-t border-slate-200 dark:border-white/10 p-3 bg-white/50 dark:bg-white/[0.03]">
                   <div className="relative">
                     <textarea
                       value={input}
@@ -522,24 +582,23 @@ export default function AIPage() {
                         }
                       }}
                       placeholder="Спроси про ER, SQL, нормализацию или генерацию модели…"
-                      className="w-full h-28 resize-none rounded-2xl border border-white/10 bg-white/5 text-white/90 placeholder:text-white/40 p-4 pr-14 outline-none focus:ring-2 focus:ring-violet-300/40"
+                      className="w-full h-28 resize-none rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-900 dark:text-white/90 placeholder:text-slate-400 dark:placeholder:text-white/40 p-4 pr-14 outline-none focus:ring-2 focus:ring-indigo-300/40 dark:focus:ring-violet-300/40 shadow-sm transition"
                     />
 
-                    {/* send button */}
                     <button
                       type="button"
                       onClick={send}
                       disabled={busy || !input.trim()}
                       className={classNames(
-                        "absolute right-3 bottom-3 h-11 w-11 rounded-2xl border border-white/10 flex items-center justify-center transition active:scale-[0.98]",
+                        "absolute right-3 bottom-3 h-11 w-11 rounded-2xl border border-slate-200 dark:border-white/10 flex items-center justify-center transition active:scale-[0.98] shadow-sm",
                         busy || !input.trim()
-                          ? "bg-white/5 text-white/30"
-                          : "bg-gradient-to-r from-indigo-600/70 to-violet-600/60 text-white shadow-lg shadow-violet-500/10 hover:from-indigo-600/85 hover:to-violet-600/80"
+                          ? "bg-white/80 dark:bg-white/5 text-slate-400 dark:text-white/30"
+                          : "bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg hover:shadow-xl hover:from-indigo-700 hover:to-violet-700"
                       )}
                       aria-label="Отправить"
                       title="Отправить"
                     >
-                      {/* shimmer on hover */}
+
                       {!busy && input.trim() && (
                         <span className="pointer-events-none absolute inset-0 rounded-2xl overflow-hidden">
                           <span className="absolute -left-12 top-0 h-full w-16 rotate-12 bg-white/20 blur-md opacity-0 hover:opacity-100 transition motion-safe:animate-[shimmer_2.2s_linear_infinite]" />
@@ -550,26 +609,22 @@ export default function AIPage() {
                   </div>
 
                   <div className="mt-2 flex items-center justify-between gap-3">
-                    <div className="text-xs text-white/45">
+                    <div className="text-xs text-slate-500 dark:text-white/45">
                       История сообщений скроллится внутри окна чата.
                     </div>
-                    <div className="text-xs text-white/45">
+                    <div className="text-xs text-slate-500 dark:text-white/45">
                       {busy ? "Запрос выполняется…" : "Готово"}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* мягкая подсветка снизу */}
               <div className="pointer-events-none relative mt-4">
-                <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-[86%] h-10 blur-2xl bg-violet-500/20" />
+                <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-[86%] h-10 blur-2xl bg-indigo-500/20 dark:bg-violet-500/20" />
               </div>
             </div>
           </div>
         </div>
-
-        {/* подсветка под карточкой */}
-        <div className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 w-[80%] h-10 blur-2xl bg-indigo-500/20" />
       </div>
     </div>
   );

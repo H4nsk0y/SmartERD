@@ -17,11 +17,32 @@ import {
 
 type Action = "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
 
+function ensureDistinctCols(left: string, right: string) {
+  const L = left;
+  let R = right;
+
+  if (L.toLowerCase() !== R.toLowerCase()) return { left: L, right: R };
+
+  const base = right || left || "ref_id";
+  R = `${base}_2`;
+  if (L.toLowerCase() === R.toLowerCase()) R = `${base}_r`;
+
+  return { left: L, right: R };
+}
+
+
+function resolveFkType(fkMeta: FKMeta, referencedPkType: string): string {
+  const t = (fkMeta.type ?? "").trim();
+  return t || (referencedPkType || "UUID");
+}
+
 function mapTypeToSQLite(t: string): string {
   const raw = (t || "").trim();
-  const u = raw.replace(/\s+/g, "").toUpperCase();
-
   if (!raw) return "TEXT";
+
+  const base = raw.split(/\s+/)[0].toUpperCase();
+  const u = base.replace(/\s+/g, "");
+
   if (u === "SERIAL") return "INTEGER";
   if (u.startsWith("UUID")) return "TEXT";
   if (u.startsWith("VARCHAR") || u.startsWith("CHAR")) return "TEXT";
@@ -31,9 +52,15 @@ function mapTypeToSQLite(t: string): string {
   if (u === "DATE") return "DATE";
   if (u === "JSON") return "TEXT";
   if (u.startsWith("INT") || u.startsWith("BIGINT") || u.startsWith("SMALLINT")) return "INTEGER";
-  if (u.startsWith("DECIMAL") || u.startsWith("NUMERIC") || u.startsWith("REAL") || u.startsWith("FLOAT"))
+  if (
+    u.startsWith("DECIMAL") ||
+    u.startsWith("NUMERIC") ||
+    u.startsWith("REAL") ||
+    u.startsWith("FLOAT")
+  )
     return "REAL";
-  return raw;
+
+  return base;
 }
 
 type TableDef = {
@@ -41,7 +68,14 @@ type TableDef = {
   cols: Map<string, { type: string; notNull?: boolean; pk?: boolean; autoInc?: boolean }>;
   compositePk?: string[];
   uniques: { cols: string[]; name?: string }[];
-  fks: { col: string; refTable: string; refCol: string; onDelete?: Action; onUpdate?: Action; name?: string }[];
+  fks: {
+    col: string;
+    refTable: string;
+    refCol: string;
+    onDelete?: Action;
+    onUpdate?: Action;
+    name?: string;
+  }[];
   indexes: { col: string; name?: string; unique?: boolean }[];
   isLink: boolean;
 };
@@ -72,14 +106,12 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
   const linkEntityIds = new Set<string>();
   const linkEntityByPair = new Map<string, Entity | null>();
 
-  // involved ids (used for empty-but-related tables)
   const involved = new Set<string>();
   for (const r of relationships) {
     if (entById.has(r.from)) involved.add(r.from);
     if (entById.has(r.to)) involved.add(r.to);
   }
 
-  // Prepare M:N mapping (same rules as Postgres/MySQL generators)
   for (const r of relationships.filter((x) => x.type === "many-to-many")) {
     const from = entById.get(r.from);
     const to = entById.get(r.to);
@@ -154,7 +186,7 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
       });
       return;
     }
-    // Merge "stronger" constraints
+
     existing.type = existing.type || type;
     if (opts.notNull === true) existing.notNull = true;
     if (opts.pk === true) existing.pk = true;
@@ -205,7 +237,7 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
     });
   };
 
-  // CREATE TABLE defs from entities (except deferred link entities)
+
   for (const e of entities) {
     const isExplicitLink = linkEntityIds.has(e.id);
     const baseName = sanitize(e.name);
@@ -213,17 +245,16 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
 
     if (e.attributes.length === 0 && !involved.has(e.id) && !isExplicitLink) continue;
 
-    // deferred link-table (empty entity) => will be created in relationship processing
     if (isExplicitLink && e.attributes.length === 0) continue;
 
     const def = ensureDef(sqlName, isExplicitLink);
+
     for (const a of e.attributes) {
       const col = sanitize(a.name);
       const isPk = (a as any).isPrimaryKey === true;
       const mapped = mapTypeToSQLite(a.type);
 
       if (isPk) {
-        // SQLite: AUTOINCREMENT only with INTEGER PRIMARY KEY AUTOINCREMENT
         const autoInc = mapped.toUpperCase() === "INTEGER" && snake(a.type || "") === "serial";
         ensureCol(def, col, mapped, { pk: true, autoInc });
       } else {
@@ -235,16 +266,12 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
     if (!isExplicitLink && !hasPK) {
       ensureCol(def, "id", "TEXT", { pk: true });
     }
-    if (!hasPK && isExplicitLink) {
-      // link PK decided later (composite) if needed
-    }
+
     if (e.attributes.length === 0 && involved.has(e.id) && !isExplicitLink) {
-      // empty but involved => ensure id PK exists
       if (!def.cols.has("id")) ensureCol(def, "id", "TEXT", { pk: true });
     }
   }
 
-  // RELATIONSHIPS => enrich defs
   for (const r of relationships) {
     const from = entById.get(r.from);
     const to = entById.get(r.to);
@@ -274,20 +301,22 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
 
       const toDef = ensureDef(toName, false);
 
-      const computedName = fkColNameFor(fromSing, fromPKName);
+      const isSelf = r.from === r.to;
+
+      const computedName = isSelf
+        ? sanitize(`parent_${snake(fromPKName)}`)
+        : fkColNameFor(fromSing, fromPKName);
+
       const suggestedExisting = findExistingFKColumn(to, fromName, fromSing, fromPKName);
+
       const requestedName =
         (fkMeta.column && fkMeta.column.trim()) || suggestedExisting || computedName;
 
       const fkCol = sanitize(requestedName);
-      const fkTypeRaw = (fkMeta.type ?? "").trim() || fromPK.type;
-      const fkType = mapTypeToSQLite(fkTypeRaw);
 
-      if (!hasColumn(to, fkCol)) {
-        ensureCol(toDef, fkCol, fkType, { notNull: fkMeta.notNull !== false });
-      } else {
-        ensureCol(toDef, fkCol, fkType, { notNull: fkMeta.notNull !== false });
-      }
+      const fkType = mapTypeToSQLite(resolveFkType(fkMeta, fromPK.type));
+
+      ensureCol(toDef, fkCol, fkType, { notNull: fkMeta.notNull !== false });
 
       const wantUnique =
         fkMeta.unique === undefined ? r.type === "one-to-one" : fkMeta.unique === true;
@@ -303,8 +332,8 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
         fkCol,
         fromName,
         fromPKName,
-        { onDelete: fkMeta.onDelete, onUpdate: fkMeta.onUpdate },
-        `fk_${toName}_${fromName}_${fkCol}`
+        { onDelete: fkMeta.onDelete as Action | undefined, onUpdate: fkMeta.onUpdate as Action | undefined },
+        `fk_${toName}_${fkCol}`
       );
     }
 
@@ -320,43 +349,47 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
       const key = `${from.id}__${to.id}`;
       const explicit = linkEntityByPair.get(key);
 
-      const linkName = linkSqlNameByPair.get(key) ?? sanitize(linkMeta.tableName ?? suggestLinkTableName(fromName, toName));
+      const linkName =
+        linkSqlNameByPair.get(key) ??
+        sanitize(linkMeta.tableName ?? suggestLinkTableName(fromName, toName));
+
       const linkDef = ensureDef(linkName, true);
 
-      const leftCol = sanitize(linkMeta.leftColumn ?? fkColNameFor(fromSing, fromPKName));
-      const rightCol = sanitize(linkMeta.rightColumn ?? fkColNameFor(toSing, toPKName));
+      const leftBase = sanitize(linkMeta.leftColumn ?? fkColNameFor(fromSing, fromPKName));
+      const rightBase = sanitize(linkMeta.rightColumn ?? fkColNameFor(toSing, toPKName));
 
-      // Ensure link columns exist (even if explicit table had attributes under old name)
+      const distinct = ensureDistinctCols(leftBase, rightBase);
+      const leftCol = sanitize(distinct.left);
+      const rightCol = sanitize(distinct.right);
+
       ensureCol(linkDef, leftCol, mapTypeToSQLite(fromPK.type), { notNull: true });
       ensureCol(linkDef, rightCol, mapTypeToSQLite(toPK.type), { notNull: true });
 
-      // Composite PK vs UNIQUE pair
       const explicitHasPK = explicit?.attributes?.some((a) => (a as any).isPrimaryKey) ?? false;
+
       if (linkMeta.compositePrimaryKey !== false && !explicitHasPK) {
         linkDef.compositePk = [leftCol, rightCol];
       } else if (linkMeta.compositePrimaryKey === false) {
         addUnique(linkDef, [leftCol, rightCol], `uq_${linkName}_${leftCol}_${rightCol}`);
       }
 
-      // FKs
       addFk(
         linkDef,
         leftCol,
         fromName,
         fromPKName,
-        { onDelete: linkMeta.onDelete, onUpdate: linkMeta.onUpdate },
-        `fk_${linkName}_${fromName}_${leftCol}`
+        { onDelete: linkMeta.onDelete as Action | undefined, onUpdate: linkMeta.onUpdate as Action | undefined },
+        `fk_${linkName}_${leftCol}`
       );
       addFk(
         linkDef,
         rightCol,
         toName,
         toPKName,
-        { onDelete: linkMeta.onDelete, onUpdate: linkMeta.onUpdate },
-        `fk_${linkName}_${toName}_${rightCol}`
+        { onDelete: linkMeta.onDelete as Action | undefined, onUpdate: linkMeta.onUpdate as Action | undefined },
+        `fk_${linkName}_${rightCol}`
       );
 
-      // Indexes
       if (linkMeta.index !== false) {
         addIndex(linkDef, leftCol, `idx_${linkName}_${leftCol}`, false);
         addIndex(linkDef, rightCol, `idx_${linkName}_${rightCol}`, false);
@@ -364,10 +397,7 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
     }
   }
 
-  // Output
   sqlParts.push(`PRAGMA foreign_keys = ON;`);
-
-  // Reorder: non-link first, link last (better readability)
   const nonLink = order.filter((t) => !defs.get(t)?.isLink);
   const link = order.filter((t) => defs.get(t)?.isLink);
   const outOrder = [...nonLink, ...link];
@@ -384,7 +414,6 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
       const type = meta.type || "TEXT";
 
       if (meta.pk && !def.compositePk) {
-        // Single-column PK
         if (meta.autoInc && type.toUpperCase() === "INTEGER") {
           colLines.push(`${C} INTEGER PRIMARY KEY AUTOINCREMENT`);
         } else {
@@ -405,7 +434,6 @@ export function generateSQLiteSQL(entities: Entity[], relationships: Relationshi
     }
 
     for (const u of def.uniques) {
-      // SQLite allows named constraints but naming is optional
       const name = u.name ? `CONSTRAINT ${q(u.name)} ` : "";
       constraints.push(`${name}UNIQUE (${u.cols.map((c) => q(c)).join(", ")})`);
     }

@@ -1,0 +1,32 @@
+{
+  "entities": [
+    {
+      "id": "e_product",
+      "name": "Product",
+      "x": 60,
+      "y": 60,
+      "attributes": [
+        { "id": "a_product_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "notNull": true, "unique": true },
+        { "id": "a_product_name", "name": "name", "type": "VARCHAR(120)", "notNull": true }
+      ]
+    },
+    {
+      "id": "e_category",
+      "name": "Category",
+      "x": 420,
+      "y": 60,
+      "attributes": [
+        { "id": "a_category_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "notNull": true, "unique": true },
+        { "id": "a_category_title", "name": "title", "type": "VARCHAR(120)", "notNull": true }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r_product_category",
+      "from": "e_product",
+      "to": "e_category",
+      "type": "many-to-many"
+    }
+  ]
+}

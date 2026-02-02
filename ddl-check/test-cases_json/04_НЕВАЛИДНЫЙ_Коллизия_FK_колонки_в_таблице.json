@@ -1,0 +1,48 @@
+{
+  "entities": [
+    {
+      "id": "e_author",
+      "name": "Author",
+      "x": 40,
+      "y": 40,
+      "attributes": [
+        { "id": "a_author_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true }
+      ]
+    },
+    {
+      "id": "e_editor",
+      "name": "Editor",
+      "x": 40,
+      "y": 260,
+      "attributes": [
+        { "id": "a_editor_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true }
+      ]
+    },
+    {
+      "id": "e_doc",
+      "name": "Document",
+      "x": 420,
+      "y": 140,
+      "attributes": [
+        { "id": "a_doc_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_doc_title", "name": "title", "type": "VARCHAR(120)", "notNull": true }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r_author_docs",
+      "from": "e_author",
+      "to": "e_doc",
+      "type": "one-to-many",
+      "fk": { "column": "user_id", "type": "UUID", "notNull": true, "onDelete": "CASCADE", "index": true }
+    },
+    {
+      "id": "r_editor_docs",
+      "from": "e_editor",
+      "to": "e_doc",
+      "type": "one-to-many",
+      "fk": { "column": "user_id", "type": "UUID", "notNull": true, "onDelete": "CASCADE", "index": true }
+    }
+  ]
+}

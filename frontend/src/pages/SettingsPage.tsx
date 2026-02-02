@@ -225,25 +225,21 @@ export default function SettingsPage() {
 
   return (
     <div className="relative w-full min-h-[calc(100vh-64px)] flex items-start justify-center px-4 py-10 overflow-y-auto">
-      {/* фон */}
-      
+
       <div className="pointer-events-none fixed inset-0 -z-10">
-        {/* light */}
+    
         <div className="absolute inset-0 bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:hidden" />
         <div className="absolute -top-24 -left-24 h-[520px] w-[520px] rounded-full bg-indigo-500/15 blur-3xl dark:hidden" />
         <div className="absolute -bottom-28 -right-24 h-[560px] w-[560px] rounded-full bg-fuchsia-500/10 blur-3xl dark:hidden" />
 
-        {/* dark */}
         <div className="hidden dark:block absolute inset-0 bg-gradient-to-b from-[#0b1220] via-[#0b1220] to-[#070b14]" />
         <div className="hidden dark:block absolute -top-24 -left-24 h-[520px] w-[520px] rounded-full bg-indigo-600/25 blur-3xl motion-safe:animate-pulse" />
         <div className="hidden dark:block absolute -bottom-28 -right-24 h-[560px] w-[560px] rounded-full bg-fuchsia-500/15 blur-3xl motion-safe:animate-pulse" />
 
-        {/* subtle grid */}
         <div className="absolute inset-0 opacity-[0.12] dark:opacity-[0.18] bg-[linear-gradient(to_right,rgba(0,0,0,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.08)_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:48px_48px]" />
       </div>
 
       <div className="relative mx-auto w-full max-w-6xl px-4 py-10">
-        {/* header */}
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white">
@@ -263,10 +259,7 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
-
-        {/* content */}
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* left column */}
           <div className="space-y-5 lg:col-span-2">
             <SectionCard
               title={t("settings.sections.appearance", { defaultValue: "Внешний вид" })}
@@ -351,8 +344,6 @@ export default function SettingsPage() {
               </div>
             </SectionCard>
           </div>
-
-          {/* right column */}
           <div className="space-y-5">
             <SectionCard
               title="Быстрые пресеты"

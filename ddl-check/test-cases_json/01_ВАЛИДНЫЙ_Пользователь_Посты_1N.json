@@ -1,0 +1,39 @@
+{
+  "entities": [
+    {
+      "id": "e_user",
+      "name": "User",
+      "x": 60,
+      "y": 60,
+      "attributes": [
+        { "id": "a_user_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "notNull": true, "unique": true },
+        { "id": "a_user_email", "name": "email", "type": "VARCHAR(120)", "notNull": true, "unique": true }
+      ]
+    },
+    {
+      "id": "e_post",
+      "name": "Post",
+      "x": 420,
+      "y": 60,
+      "attributes": [
+        { "id": "a_post_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "notNull": true, "unique": true },
+        { "id": "a_post_title", "name": "title", "type": "VARCHAR(200)", "notNull": true }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r_user_posts",
+      "from": "e_user",
+      "to": "e_post",
+      "type": "one-to-many",
+      "fk": {
+        "column": "user_id",
+        "type": "",
+        "notNull": true,
+        "onDelete": "CASCADE",
+        "index": true
+      }
+    }
+  ]
+}

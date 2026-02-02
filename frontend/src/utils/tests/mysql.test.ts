@@ -101,7 +101,7 @@ describe("sql/mysql: generateMySQLSQL (current behavior)", () => {
   it("M:N (явная пустая link-таблица): текущая логика переименовывает в *_2 (uniqueName)", () => {
     const U = ent("u", "User", [attr("id", "UUID", true)]);
     const R = ent("r", "Role", [attr("id", "UUID", true)]);
-    const Link = ent("l", "user_role", []); // пустая
+    const Link = ent("l", "user_role", []); 
     const mm = rel("mm2", U, R, "many-to-many");
 
     const sql = norm(generateMySQLSQL([U, R, Link], [mm]));

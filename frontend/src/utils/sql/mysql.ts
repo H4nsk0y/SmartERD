@@ -14,14 +14,54 @@ import {
   limitIdentifier,
 } from "./common";
 
-/** Приведение «универсальных» типов к MySQL */
+function ensureDistinctCols(left: string, right: string) {
+  const L = left;
+  let R = right;
+
+  if (L.toLowerCase() !== R.toLowerCase()) return { left: L, right: R };
+
+  const base = right || left || "ref_id";
+  R = `${base}_2`;
+
+  if (L.toLowerCase() === R.toLowerCase()) {
+    R = `${base}_r`;
+  }
+
+  return { left: L, right: R };
+}
+
+function resolveFkType(fkMeta: FKMeta, referencedPkType: string): string {
+  const t = (fkMeta.type ?? "").trim();
+  return t || (referencedPkType || "UUID");
+}
+
+
 function mapTypeToMySQL(t: string): string {
   const raw = (t || "").trim();
-  const u = raw.replace(/\s+/g, "").toUpperCase();
+  if (!raw) return raw;
 
-  if (u === "SERIAL") return "INT AUTO_INCREMENT";
-  if (u.startsWith("UUID")) return "CHAR(36)";
-  if (u === "TIMESTAMP") return "DATETIME";
+
+  const u = raw.replace(/\s+/g, " ").trim().toUpperCase();
+
+  if (/^UUID\b/i.test(raw)) {
+    return raw.replace(/^UUID\b/i, "CHAR(36)");
+  }
+
+
+  if (/^SERIAL\b/i.test(raw)) {
+    return raw.replace(/^SERIAL\b/i, "BIGINT AUTO_INCREMENT");
+  }
+
+  if (/^BOOLEAN\b/i.test(raw)) {
+    return raw.replace(/^BOOLEAN\b/i, "TINYINT(1)");
+  }
+
+  if (/^TIMESTAMP\b/i.test(raw)) {
+    return raw.replace(/^TIMESTAMP\b/i, "DATETIME");
+  }
+
+  if (/^JSON\b/i.test(raw)) return raw;
+
   return raw;
 }
 
@@ -36,33 +76,6 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
   const usedTableNames = new Set(entities.map((e) => sanitize(e.name).toLowerCase()));
   const linkSqlNameByEntityId = new Map<string, string>();
   const linkSqlNameByPair = new Map<string, string>();
-
-  /* ==== Подготовка N:M ==== */
-  // type MMPair = {
-  //   from: Entity;
-  //   to: Entity;
-  //   fromName: string;
-  //   toName: string;
-  //   fromSingular: string;
-  //   toSingular: string;
-  // };
-
-  // const mmPairs: MMPair[] = relationships
-  //   .filter((r) => r.type === "many-to-many")
-  //   .map((r) => {
-  //     const from = entById.get(r.from);
-  //     const to = entById.get(r.to);
-  //     if (!from || !to) return null;
-  //     return {
-  //       from,
-  //       to,
-  //       fromName: sanitize(from.name),
-  //       toName: sanitize(to.name),
-  //       fromSingular: toSingular(sanitize(from.name)),
-  //       toSingular: toSingular(sanitize(to.name)),
-  //     };
-  //   })
-  //   .filter(Boolean) as MMPair[];
 
   const linkEntityIds = new Set<string>();
   const linkEntityByPair = new Map<string, Entity | null>();
@@ -80,9 +93,7 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
     const suggestedBase = suggestLinkTableName(from.name, to.name);
     const explicit = findExistingLinkEntity(from, to, entities);
 
-    if (explicit) {
-      linkEntityIds.add(explicit.id);
-    }
+    if (explicit) linkEntityIds.add(explicit.id);
     linkEntityByPair.set(key, explicit);
 
     let chosen = suggestedBase;
@@ -109,7 +120,6 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
     if (entById.has(r.to)) involved.add(r.to);
   }
 
-  /* ==== 1) CREATE TABLES ==== */
   for (const e of entities) {
     const isExplicitLink = linkEntityIds.has(e.id);
 
@@ -123,7 +133,7 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
     if (e.attributes.length === 0 && !involved.has(e.id) && !isExplicitLink) continue;
 
     if (isExplicitLink && e.attributes.length === 0) {
-      deferredLinkTables.add(sqlTableName);
+      deferredLinkTables.add(sqlTableName.toLowerCase());
       continue;
     }
 
@@ -144,7 +154,6 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
     sqlParts.push(`CREATE TABLE ${T} (\n  ${cols.join(",\n  ")}\n) ENGINE=InnoDB;`);
   }
 
-  /* ==== 2) RELATIONSHIPS ==== */
   for (const r of relationships) {
     const from = entById.get(r.from);
     const to = entById.get(r.to);
@@ -152,16 +161,18 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
 
     const fromName = sanitize(from.name);
     const toName = sanitize(to.name);
-    const F = qMy(fromName);
-    const T = qMy(toName);
 
     const fromPK = getPrimaryKey(from);
     const toPK = getPrimaryKey(to);
 
     const fromPKName = sanitize(fromPK.name);
     const toPKName = sanitize(toPK.name);
+
     const fromSing = toSingular(fromName);
     const toSing = toSingular(toName);
+
+    const F = qMy(fromName);
+    const T = qMy(toName);
 
     switch (r.type) {
       case "one-to-one":
@@ -175,8 +186,14 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
           ...(r.fk ?? {}),
         };
 
-        const computedName = fkColNameFor(fromSing, fromPKName);
+        const isSelf = r.from === r.to;
+
+        const computedName = isSelf
+          ? sanitize(`parent_${snake(fromPKName)}`)
+          : fkColNameFor(fromSing, fromPKName);
+
         const suggestedExisting = findExistingFKColumn(to, fromName, fromSing, fromPKName);
+
         const requestedName =
           (fkMeta.column && fkMeta.column.trim()) ||
           suggestedExisting ||
@@ -184,8 +201,7 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
 
         const fkCol = sanitize(requestedName);
         const fkColQ = qMy(fkCol);
-        const fkTypeRaw = (fkMeta.type ?? "").trim() || fromPK.type;
-        const fkType = mapTypeToMySQL(fkTypeRaw);
+        const fkType = mapTypeToMySQL(resolveFkType(fkMeta, fromPK.type));
 
         const existsExact = hasColumn(to, fkCol);
         if (existsExact) {
@@ -203,7 +219,8 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
           fkMeta.onUpdate ? ` ON UPDATE ${fkMeta.onUpdate}` : "",
         ].join("");
 
-        const fkName = limitIdentifier(`fk_${fromName}_${toName}`, 64);
+        const fkName = limitIdentifier(`fk_${toName}_${fkCol}`, 64);
+
         sqlParts.push(
           `ALTER TABLE ${T}\n  ADD CONSTRAINT ${qMy(fkName)} FOREIGN KEY (${fkColQ}) REFERENCES ${F}(${qMy(fromPKName)})${actions};`
         );
@@ -234,34 +251,41 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
         const key = `${from.id}__${to.id}`;
         const explicitEntity = linkEntityByPair.get(key);
 
-        const leftCol = sanitize(linkMeta.leftColumn ?? fkColNameFor(fromSing, fromPKName));
-        const rightCol = sanitize(linkMeta.rightColumn ?? fkColNameFor(toSing, toPKName));
-
-        const leftQ = qMy(leftCol);
-        const rightQ = qMy(rightCol);
-
         const autoName = suggestLinkTableName(fromName, toName);
         const linkName = linkSqlNameByPair.get(key) ?? sanitize(linkMeta.tableName ?? autoName);
         const L = qMy(linkName);
+
+        const leftBase = sanitize(linkMeta.leftColumn ?? fkColNameFor(fromSing, fromPKName));
+        const rightBase = sanitize(linkMeta.rightColumn ?? fkColNameFor(toSing, toPKName));
+
+        const distinct = ensureDistinctCols(leftBase, rightBase);
+        const leftCol = sanitize(distinct.left);
+        const rightCol = sanitize(distinct.right);
+
+        const leftQ = qMy(leftCol);
+        const rightQ = qMy(rightCol);
 
         const actions = [
           linkMeta.onDelete ? ` ON DELETE ${linkMeta.onDelete}` : "",
           linkMeta.onUpdate ? ` ON UPDATE ${linkMeta.onUpdate}` : "",
         ].join("");
 
-        const wasDeferred = deferredLinkTables.has(linkName);
+        const wasDeferred = deferredLinkTables.has(linkName.toLowerCase());
         const explicitHasPK =
           explicitEntity?.attributes?.some((a) => (a as any).isPrimaryKey) ?? false;
 
-        const fkLName = limitIdentifier(`fk_${linkName}_${fromName}`, 64);
-        const fkRName = limitIdentifier(`fk_${linkName}_${toName}`, 64);
+        const fkLName = limitIdentifier(`fk_${linkName}_${leftCol}`, 64);
+        const fkRName = limitIdentifier(`fk_${linkName}_${rightCol}`, 64);
+
+        const leftType = mapTypeToMySQL(fromPK.type);
+        const rightType = mapTypeToMySQL(toPK.type);
 
         if (explicitEntity) {
           if (wasDeferred) {
             sqlParts.push(
               `CREATE TABLE ${L} (\n` +
-                `  ${leftQ} ${mapTypeToMySQL(fromPK.type)} NOT NULL,\n` +
-                `  ${rightQ} ${mapTypeToMySQL(toPK.type)} NOT NULL,\n` +
+                `  ${leftQ} ${leftType} NOT NULL,\n` +
+                `  ${rightQ} ${rightType} NOT NULL,\n` +
                 (linkMeta.compositePrimaryKey === false || explicitHasPK
                   ? ""
                   : `  PRIMARY KEY (${leftQ}, ${rightQ}),\n`) +
@@ -275,14 +299,14 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
             }
           } else {
             if (!hasColumn(explicitEntity, leftCol)) {
-              sqlParts.push(`ALTER TABLE ${L}\n  ADD ${leftQ} ${mapTypeToMySQL(fromPK.type)} NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  ADD ${leftQ} ${leftType} NOT NULL;`);
             } else {
-              sqlParts.push(`ALTER TABLE ${L}\n  MODIFY ${leftQ} ${mapTypeToMySQL(fromPK.type)} NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  MODIFY ${leftQ} ${leftType} NOT NULL;`);
             }
             if (!hasColumn(explicitEntity, rightCol)) {
-              sqlParts.push(`ALTER TABLE ${L}\n  ADD ${rightQ} ${mapTypeToMySQL(toPK.type)} NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  ADD ${rightQ} ${rightType} NOT NULL;`);
             } else {
-              sqlParts.push(`ALTER TABLE ${L}\n  MODIFY ${rightQ} ${mapTypeToMySQL(toPK.type)} NOT NULL;`);
+              sqlParts.push(`ALTER TABLE ${L}\n  MODIFY ${rightQ} ${rightType} NOT NULL;`);
             }
 
             if (linkMeta.compositePrimaryKey !== false && !explicitHasPK) {
@@ -308,8 +332,8 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
         } else {
           sqlParts.push(
             `CREATE TABLE ${L} (\n` +
-              `  ${leftQ} ${mapTypeToMySQL(fromPK.type)} NOT NULL,\n` +
-              `  ${rightQ} ${mapTypeToMySQL(toPK.type)} NOT NULL,\n` +
+              `  ${leftQ} ${leftType} NOT NULL,\n` +
+              `  ${rightQ} ${rightType} NOT NULL,\n` +
               (linkMeta.compositePrimaryKey === false
                 ? `  CONSTRAINT ${qMy(limitIdentifier(`uq_${linkName}_${leftCol}_${rightCol}`, 64))} UNIQUE (${leftQ}, ${rightQ}),\n`
                 : `  PRIMARY KEY (${leftQ}, ${rightQ}),\n`) +
@@ -322,6 +346,7 @@ export function generateMySQLSQL(entities: Entity[], relationships: Relationship
             sqlParts.push(`CREATE INDEX ${qMy(idxName(linkName, rightCol))} ON ${L}(${rightQ});`);
           }
         }
+
         break;
       }
     }

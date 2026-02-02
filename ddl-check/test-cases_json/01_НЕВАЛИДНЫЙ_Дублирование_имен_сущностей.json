@@ -1,0 +1,23 @@
+{
+  "entities": [
+    {
+      "id": "e_user1",
+      "name": "User",
+      "x": 60,
+      "y": 60,
+      "attributes": [
+        { "id": "a_user1_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "notNull": true }
+      ]
+    },
+    {
+      "id": "e_user2",
+      "name": "user",
+      "x": 420,
+      "y": 60,
+      "attributes": [
+        { "id": "a_user2_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "notNull": true }
+      ]
+    }
+  ],
+  "relationships": []
+}

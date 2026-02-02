@@ -11,18 +11,15 @@ function normalizeSql(sql: string) {
   return sql.replace(/\r\n/g, "\n").trim();
 }
 
-/**
- * Проверяем только "JS-артефакты".
- * SQL-NULL / NOT NULL / SET NULL — валидны, поэтому НЕ запрещаем "NULL".
- */
+
 function expectNoJsNullUndefined(sql: string) {
-  expect(sql).not.toMatch(/\bundefined\b/); // без i
-  expect(sql).not.toMatch(/\bnull\b/);      // без i: ловим только "null" (как JS-строка), но не "NULL"
+  expect(sql).not.toMatch(/\bundefined\b/); 
+  expect(sql).not.toMatch(/\bnull\b/);      
 }
 
 describe("generateSQL: postgres", () => {
   it("surrogate PK: если PK не задан — добавляется id UUID PRIMARY KEY", () => {
-    const user = ent("User", [attr("email", "VARCHAR(255)")]); // нет PK
+    const user = ent("User", [attr("email", "VARCHAR(255)")]); 
     const sql = normalizeSql(generateSQL([user], [], { dialect: "postgres" }));
 
     expect(sql).toContain('CREATE TABLE "User"');
@@ -60,7 +57,6 @@ describe("generateSQL: postgres", () => {
 );
     expect(sql).toMatch(/ADD CONSTRAINT "uq_Profile_user_id" UNIQUE \("user_id"\);/);
 
-    // UNIQUE сам создаёт индекс — отдельный index по умолчанию не генерим
     expect(sql).not.toContain('CREATE INDEX ON "Profile"("user_id");');
     expectNoJsNullUndefined(sql);
   });
@@ -86,12 +82,12 @@ describe("generateSQL: postgres", () => {
   it("N:M (explicit пустая link entity): создаётся под (возможно уникализированным) именем", () => {
     const user = ent("User", [attr("id", "UUID", true)]);
     const course = ent("Course", [attr("id", "UUID", true)]);
-    const link = ent("UserCourseLink", []); // пустая — будет deferred
+    const link = ent("UserCourseLink", []); 
     const r = rel(user, course, "many-to-many");
 
     const sql = normalizeSql(generateSQL([user, course, link], [r], { dialect: "postgres" }));
 
-    // Текущее поведение: из-за uniqueName() может стать UserCourseLink_2
+    
     expect(sql).toMatch(/CREATE TABLE "UserCourseLink(_\d+)?"\s*\(/);
     expect(sql).toContain('"user_id" UUID NOT NULL');
     expect(sql).toContain('"course_id" UUID NOT NULL');
@@ -113,7 +109,7 @@ describe("generateSQL: postgres", () => {
 
 describe("generateSQL: mysql", () => {
   it("surrogate PK: если PK не задан — добавляется id CHAR(36) PRIMARY KEY", () => {
-    const user = ent("User", [attr("email", "VARCHAR(255)")]); // нет PK
+    const user = ent("User", [attr("email", "VARCHAR(255)")]); 
     const sql = normalizeSql(generateSQL([user], [], { dialect: "mysql" }));
 
     expect(sql).toContain("CREATE TABLE `User`");
@@ -129,11 +125,10 @@ describe("generateSQL: mysql", () => {
 
     const sql = normalizeSql(generateSQL([user, course], [r], { dialect: "mysql" }));
 
-    // Текущее поведение генератора MySQL: ADD (без COLUMN)
     expect(sql).toContain("ALTER TABLE `Course`\n  ADD `user_id` CHAR(36) NOT NULL;");
-    // Имя constraint сейчас: fk_{from}_{to} => fk_User_Course
+   
     expect(sql).toMatch(/ADD CONSTRAINT `fk_User_Course` FOREIGN KEY \(`user_id`\) REFERENCES `User`\(`id`\) ON DELETE CASCADE/);
-    // Имя индекса сейчас в snake_case
+  
     expect(sql).toContain("CREATE INDEX `idx_course_user_id` ON `Course`(`user_id`);");
     expectNoJsNullUndefined(sql);
   });

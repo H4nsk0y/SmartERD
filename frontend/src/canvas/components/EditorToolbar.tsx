@@ -1,9 +1,8 @@
-// frontend/src/canvas/components/EditorToolbar.tsx
 import * as React from "react";
 import { useAppStore } from "../../store/useAppStore";
 
 export type EditorToolbarProps = {
-  isAddingEntity: boolean; 
+  isAddingEntity: boolean;
   isLinking: boolean;
 
   showMinimap: boolean;
@@ -27,19 +26,18 @@ export type EditorToolbarProps = {
 
   onSaveProject?: () => void;
   canSaveProject?: boolean;
+
+  //NEW: SQL block visual
+  sqlBlocked?: boolean;
+  sqlErrorCount?: number;
+  onShowIssues?: () => void;
 };
 
-function Icon({
-  children,
-  className = "",
-}: React.PropsWithChildren<{ className?: string }>) {
+function Icon({ children, className = "" }: React.PropsWithChildren<{ className?: string }>) {
   return <span className={["inline-flex items-center justify-center", className].join(" ")}>{children}</span>;
 }
 
-function Svg({
-  children,
-  className = "",
-}: React.PropsWithChildren<{ className?: string }>) {
+function Svg({ children, className = "" }: React.PropsWithChildren<{ className?: string }>) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -143,7 +141,7 @@ const I = {
 };
 
 function Separator() {
-  return <div className="mx-1 h-7 w-px bg-gray-200/80 dark:bg-gray-700/80 shrink-0" />;
+  return <div className="mx-0.5 h-7 w-px bg-gray-200/80 dark:bg-gray-700/80 shrink-0" />;
 }
 
 function ActiveDot() {
@@ -155,6 +153,8 @@ function ActiveDot() {
   );
 }
 
+type Badge = { text: string; tone?: "error" | "info" };
+
 function Btn({
   compact,
   active,
@@ -164,6 +164,7 @@ function Btn({
   danger,
   disabled,
   testId,
+  badge,
 }: {
   compact: boolean;
   active?: boolean;
@@ -173,6 +174,7 @@ function Btn({
   danger?: boolean;
   disabled?: boolean;
   testId?: string;
+  badge?: Badge;
 }) {
   const base = compact ? "tool-btn-icon tool-btn-sliced" : "tool-btn-wide";
 
@@ -186,13 +188,19 @@ function Btn({
 
   const iconCls = active ? "text-white drop-shadow" : compact ? "" : "text-indigo-700 dark:text-indigo-200";
 
+  const badgeCls =
+    badge?.tone === "error"
+      ? "bg-red-500 text-white"
+      : "bg-indigo-500 text-white";
+
   return (
     <button
       type="button"
       data-testid={testId}
       className={[
         base,
-        "relative overflow-hidden transition-all duration-200 active:scale-[0.98]",
+        "relative overflow-hidden transition-all duration-200 active:scale-[0.98] flex-1 min-w-0",
+        "disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100",
         activeCls,
         dangerCls,
       ].join(" ")}
@@ -203,7 +211,6 @@ function Btn({
     >
       <span className="corner-anchor" />
 
-      {/* лёгкий “блик” на активной кнопке */}
       {active && (
         <span className="pointer-events-none absolute inset-0 opacity-40">
           <span className="absolute -left-10 top-0 h-full w-20 rotate-12 bg-white/30 blur-md motion-safe:animate-[pulse_1.6s_ease-in-out_infinite]" />
@@ -212,8 +219,21 @@ function Btn({
 
       {active && <ActiveDot />}
 
+      {badge && (
+        <span
+          className={[
+            "absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold",
+            "flex items-center justify-center shadow",
+            badgeCls,
+          ].join(" ")}
+          aria-hidden="true"
+        >
+          {badge.text}
+        </span>
+      )}
+
       <Icon className={iconCls}>{icon}</Icon>
-      {!compact && <span className="text-sm font-medium">{label}</span>}
+      {!compact && <span className="text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">{label}</span>}
     </button>
   );
 }
@@ -233,10 +253,17 @@ function FileBtn({
 }) {
   const cls = compact ? "tool-btn-icon tool-btn-sliced" : "tool-btn-wide";
   return (
-    <label className={[cls, "cursor-pointer relative overflow-hidden transition active:scale-[0.98]"].join(" ")} title={label} aria-label={label}>
+    <label
+      className={[
+        cls,
+        "cursor-pointer relative overflow-hidden transition active:scale-[0.98] flex-1 min-w-0",
+      ].join(" ")}
+      title={label}
+      aria-label={label}
+    >
       <span className="corner-anchor" />
       <Icon className={compact ? "" : "text-indigo-700 dark:text-indigo-200"}>{icon}</Icon>
-      {!compact && <span className="text-sm font-medium">{label}</span>}
+      {!compact && <span className="text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">{label}</span>}
       <input type="file" accept={accept} onChange={onChange} className="hidden" />
     </label>
   );
@@ -270,12 +297,20 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
     onSaveProject,
     canSaveProject,
+
+    sqlBlocked = false,
+    sqlErrorCount = 0,
+    onShowIssues,
   } = props;
 
   const compact = compactToolbar;
 
+  const sqlLabel = sqlBlocked
+    ? `SQL (недоступно: ${sqlErrorCount} ошибок)`
+    : "SQL";
+
   return (
-    <div className="mb-2 flex items-center gap-2 flex-nowrap overflow-x-auto px-2 py-1">
+    <div className="mb-2 flex items-center gap-1 flex-nowrap overflow-x-auto px-0 py-1 w-full">
       {/* Создание/связи */}
       <Btn compact={compact} onClick={onAddEntity} active={isAddingEntity} label="Сущность" icon={I.plus} />
       <Btn compact={compact} onClick={onToggleLink} active={isLinking} label="Связь" icon={I.link} />
@@ -298,7 +333,25 @@ export default function EditorToolbar(props: EditorToolbarProps) {
       <Separator />
 
       {/* Генерация */}
-      <Btn compact={compact} onClick={onGenerateSQL} label="SQL" icon={I.sql} />
+      <Btn
+        compact={compact}
+        onClick={onGenerateSQL}
+        label={sqlLabel}
+        icon={I.sql}
+        disabled={sqlBlocked}
+        badge={sqlBlocked ? { text: String(sqlErrorCount), tone: "error" } : undefined}
+      />
+
+      {sqlBlocked && onShowIssues && (
+        <button
+          type="button"
+          onClick={onShowIssues}
+          className="px-3 py-1.5 rounded-md text-sm bg-red-50/80 dark:bg-red-900/25 border border-red-200 dark:border-red-700/60 text-red-700 dark:text-red-200 hover:bg-red-100 dark:hover:bg-red-900/35 transition flex-1 min-w-0 whitespace-nowrap"
+          title="Открыть список проблем"
+        >
+          Проблемы
+        </button>
+      )}
 
       <Separator />
 
@@ -314,7 +367,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
       <Separator />
 
-      {/* Потенциально опасное */}
+      {/* Опасное */}
       <Btn compact={compact} onClick={onClearAll} label="Очистить" icon={I.trash} danger />
     </div>
   );

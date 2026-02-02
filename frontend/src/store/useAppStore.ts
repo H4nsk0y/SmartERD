@@ -6,17 +6,17 @@ type Lang = 'ru' | 'en';
 type Theme = 'light' | 'dark';
 
 interface AppState {
-  // базовые
+ 
   language: Lang;
   theme: Theme;
 
-  // настройки UX
-  compactToolbar: boolean;          // иконки вместо текста в тулбаре
-  defaultShowSqlPanel: boolean;     // показывать SQL-панель по умолчанию
-  defaultShowMinimap: boolean;      // показывать миникарту по умолчанию
-  confirmDelete: boolean;           // подтверждать удаление сущности/связи
+ 
+  compactToolbar: boolean;          
+  defaultShowSqlPanel: boolean;     
+  defaultShowMinimap: boolean;      
+  confirmDelete: boolean;           
 
-  // сеттеры
+  
   setLanguage: (lang: Lang) => void;
   setTheme: (theme: Theme) => void;
 
@@ -25,7 +25,7 @@ interface AppState {
   setDefaultShowMinimap: (v: boolean) => void;
   setConfirmDelete: (v: boolean) => void;
 
-  // сброс
+
   resetSettings: () => void;
 }
 

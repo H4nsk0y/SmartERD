@@ -14,8 +14,6 @@ import {
   limitIdentifier,
 } from "./common";
 
-//type Action = "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
-
 function qMs(name: string) {
   return `[${sanitize(name)}]`;
 }
@@ -89,7 +87,6 @@ export function generateMSSQLSQL(entities: Entity[], relationships: Relationship
     if (entById.has(r.to)) involved.add(r.to);
   }
 
-  /* ==== 1) CREATE TABLES ==== */
   for (const e of entities) {
     const isExplicitLink = linkEntityIds.has(e.id);
 
@@ -122,7 +119,6 @@ export function generateMSSQLSQL(entities: Entity[], relationships: Relationship
     sqlParts.push(`CREATE TABLE ${T} (\n  ${cols.join(",\n  ")}\n);`);
   }
 
-  /* ==== 2) RELATIONSHIPS ==== */
   for (const r of relationships) {
     const from = entById.get(r.from);
     const to = entById.get(r.to);

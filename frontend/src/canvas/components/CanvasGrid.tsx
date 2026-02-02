@@ -1,7 +1,4 @@
 // frontend/src/canvas/components/CanvasGrid.tsx
-
-
-
 export type CanvasGridProps = {
   world: { w: number; h: number };
   gridSize: number;

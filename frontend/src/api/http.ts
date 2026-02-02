@@ -19,7 +19,6 @@ export async function apiFetch<T>(
   try {
     j = text ? JSON.parse(text) : null;
   } catch {
-    // если вдруг сервер вернул не JSON
   }
 
   if (!r.ok || (j && j.ok === false)) {

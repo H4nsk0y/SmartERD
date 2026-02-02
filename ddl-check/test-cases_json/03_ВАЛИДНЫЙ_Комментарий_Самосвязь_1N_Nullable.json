@@ -1,0 +1,30 @@
+{
+  "entities": [
+    {
+      "id": "e_comment",
+      "name": "Comment",
+      "x": 60,
+      "y": 60,
+      "attributes": [
+        { "id": "a_comment_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "notNull": true, "unique": true },
+        { "id": "a_comment_body", "name": "body", "type": "TEXT", "notNull": true },
+        { "id": "a_comment_parent", "name": "parent_comment_id", "type": "UUID", "notNull": false }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r_comment_self_1n",
+      "from": "e_comment",
+      "to": "e_comment",
+      "type": "one-to-many",
+      "fk": {
+        "column": "parent_comment_id",
+        "type": "",
+        "notNull": false,
+        "onDelete": "CASCADE",
+        "index": true
+      }
+    }
+  ]
+}

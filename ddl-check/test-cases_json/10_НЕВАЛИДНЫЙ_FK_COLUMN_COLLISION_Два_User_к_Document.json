@@ -1,0 +1,28 @@
+{
+  "entities": [
+    {
+      "id": "e_user",
+      "name": "User",
+      "x": 60,
+      "y": 60,
+      "attributes": [
+        { "id": "a_user_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_user_email", "name": "email", "type": "VARCHAR(120)", "unique": true, "notNull": true }
+      ]
+    },
+    {
+      "id": "e_document",
+      "name": "Document",
+      "x": 420,
+      "y": 60,
+      "attributes": [
+        { "id": "a_document_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_document_title", "name": "title", "type": "VARCHAR(120)", "notNull": true }
+      ]
+    }
+  ],
+  "relationships": [
+    { "id": "r_user_document_author", "from": "e_user", "to": "e_document", "type": "one-to-many", "fk": { "onDelete": "CASCADE", "index": true } },
+    { "id": "r_user_document_editor", "from": "e_user", "to": "e_document", "type": "one-to-many", "fk": { "onDelete": "CASCADE", "index": true } }
+  ]
+}

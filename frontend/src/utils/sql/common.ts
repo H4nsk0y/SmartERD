@@ -1,11 +1,36 @@
+// frontend/src/utils/sql/common.ts
 import type { Entity } from "../../store/useERStore";
 
-/* Строгий ASCII-санитайзер */
+export const IDENT_OK = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 export function sanitize(name: string): string {
-  return (name || "")
+  let s = (name || "")
     .replace(/[^A-Za-z0-9_]/g, "_")
     .replace(/__+/g, "_")
     .replace(/^_+|_+$/g, "");
+
+  if (!s) return "";
+
+  if (/^\d/.test(s)) {
+    s = `x_${s}`
+      .replace(/__+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    if (!s) return "x";
+  }
+
+  return s;
+}
+
+
+export function sanitizeNonEmpty(name: string, fallback = "x"): string {
+  const s = sanitize(name);
+  if (s) return s;
+  return sanitize(fallback) || "x";
+}
+
+export function isValidIdentifier(name: string): boolean {
+  const s = sanitize(name);
+  return !!s && IDENT_OK.test(s);
 }
 
 export function snake(name: string): string {
@@ -29,7 +54,7 @@ export function toSingular(name: string): string {
   return name;
 }
 
-/*Имя FK-колонки*/
+
 export function fkColNameFor(rootSingular: string, pkName: string) {
   const base = snake(pkName);
   const root = snake(rootSingular) + "_";
@@ -49,6 +74,7 @@ export function findExistingFKColumn(
 ): string | null {
   const roots = [snake(fromName), snake(singularFrom)];
   const pkNorm = snake(fromPKName);
+
   const candidates = new Set<string>();
   for (const root of roots) {
     candidates.add(`${root}_id`);
@@ -76,13 +102,13 @@ export function findExistingLinkEntity(a: Entity, b: Entity, all: Entity[]): Ent
   const aCol = sanitize(fkColNameFor(anSing, apk));
   const bCol = sanitize(fkColNameFor(bnSing, bpk));
 
-  // 1) Структурный матч: таблица содержит оба FK-столбца (user_id + order_id и т.п.)
+ 
   for (const e of all) {
     if (e.id === a.id || e.id === b.id) continue;
     if (hasColumn(e, aCol) && hasColumn(e, bCol)) return e;
   }
 
-  // 2) Матч по имени (старое поведение)
+  
   const an = snake(toSingular(sanitize(a.name)));
   const bn = snake(toSingular(sanitize(b.name)));
 
@@ -95,27 +121,27 @@ export function findExistingLinkEntity(a: Entity, b: Entity, all: Entity[]): Ent
   return null;
 }
 
-/** Нормализация типа для сравнения */
+
 function normType(t: string) {
   return (t || "").replace(/\s+/g, "").toUpperCase();
 }
 
-/** Является ли тип “похожим на PK” по твоему ТЗ: UUID или INT (и близкие варианты) */
+
 function isPkType(t?: string) {
   const u = normType(t || "");
   if (!u) return false;
   if (u === "UUID") return true;
   if (u === "INT" || u === "INTEGER") return true;
-  if (u.endsWith("INT")) return true; // BIGINT, SMALLINT
-  if (u.includes("SERIAL")) return true; // SERIAL/BIGSERIAL
+  if (u.endsWith("INT")) return true; 
+  if (u.includes("SERIAL")) return true; 
   return false;
 }
 
-/** Пытаемся угадать PK, если пользователь не поставил 🔑 */
+
 function inferImplicitPk(entity: Entity): { name: string; type: string } | null {
   const root = snake(toSingular(sanitize(entity.name || "")));
 
-  // Приоритет: id -> <entity>_id
+
   const candidates = ["id", root ? `${root}_id` : ""].filter(Boolean);
 
   for (const want of candidates) {
@@ -124,67 +150,59 @@ function inferImplicitPk(entity: Entity): { name: string; type: string } | null 
       return { name: sanitize(hit.name), type: (hit.type || "").trim() || "UUID" };
     }
   }
-
   return null;
 }
 
 export function getPrimaryKey(entity: Entity) {
   const explicit = entity.attributes.find((a) => (a as any).isPrimaryKey);
- if (explicit) return { name: sanitize(explicit.name), type: (explicit.type || "").trim() || "UUID" };
+  if (explicit) {
+    return {
+      name: sanitizeNonEmpty(explicit.name, "id"),
+      type: (explicit.type || "").trim() || "UUID",
+    };
+  }
 
-  // если есть id / <entity>_id с типом INT/UUID — используем это как PK
   const implicit = inferImplicitPk(entity);
-  if (implicit) return implicit;
+  if (implicit) return { name: sanitizeNonEmpty(implicit.name, "id"), type: implicit.type };
 
-  // дефолтный тип PK — UUID
   return { name: "id", type: "UUID" };
 }
 
-/*Кавычки для идентификаторов*/
+
 export function qPg(name: string) {
-  return `"${sanitize(name)}"`;
+  return `"${sanitizeNonEmpty(name, "x")}"`;
 }
 export function qMy(name: string) {
-  return `\`${sanitize(name)}\``;
+  return `\`${sanitizeNonEmpty(name, "x")}\``;
 }
 
-/**
- * Предлагаем каноническое имя линк-таблицы для N:M.
- * Важно: порядок from/to сохраняем (не сортируем), чтобы не менять существующее поведение.
- */
+
 export function suggestLinkTableName(fromEntityName: string, toEntityName: string): string {
   const left = snake(toSingular(sanitize(fromEntityName)));
   const right = snake(toSingular(sanitize(toEntityName)));
   return `${left}_${right}_link`;
 }
 
-/**
- * Возвращает уникальное имя (добавляя _2, _3, ...) относительно набора уже занятых имён.
- * Сравнение case-insensitive, т.к. для SQL имена зачастую приводятся.
- */
+
 export function uniqueName(base: string, usedLower: Set<string>): string {
-  const b = sanitize(base);
-  const norm = b.toLowerCase();
-  if (!usedLower.has(norm)) return b;
+  const b = sanitizeNonEmpty(base, "x");
+  const normLower = b.toLowerCase();
+  if (!usedLower.has(normLower)) return b;
 
   let i = 2;
   while (true) {
-    const cand = sanitize(`${b}_${i}`);
+    const cand = sanitizeNonEmpty(`${b}_${i}`, `${b}_${i}`);
     const n = cand.toLowerCase();
     if (!usedLower.has(n)) return cand;
     i += 1;
   }
 }
 
-/**
- * Ограничивает длину идентификатора (например, MySQL limit 64) с добавлением стабильного hash-суффикса.
- * Возвращает безопасную ASCII-строку.
- */
 export function limitIdentifier(name: string, maxLen: number): string {
-  const s = sanitize(name);
+  const s = sanitizeNonEmpty(name, "x");
   if (s.length <= maxLen) return s;
 
-  // FNV-1a 32-bit
+  
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);

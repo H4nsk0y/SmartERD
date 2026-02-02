@@ -106,12 +106,11 @@ describe("sql/postgres: generatePostgresSQL (current behavior)", () => {
   it("M:N (явная пустая link-таблица): текущая логика переименовывает в *_2 (uniqueName)", () => {
     const user = ent("u", "User", [attr("id", "UUID", true)]);
     const role = ent("r", "Role", [attr("id", "UUID", true)]);
-    const link = ent("l", "user_role", []); // пустая явная link-таблица
+    const link = ent("l", "user_role", []);
     const mm = rel("mm2", user, role, "many-to-many");
 
     const sql = norm(generatePostgresSQL([user, role, link], [mm]));
 
-    // ВАЖНО: из-за usedTableNames + uniqueName итоговое имя станет user_role_2
     expect(sql).toMatch(/CREATE TABLE "user_role_2" \(\n/);
     expect(sql).toMatch(/"user_id" UUID NOT NULL/);
     expect(sql).toMatch(/"role_id" UUID NOT NULL/);
@@ -138,9 +137,7 @@ describe("sql/postgres: generatePostgresSQL (current behavior)", () => {
     expect(sql).not.toMatch(/ALTER TABLE "post_tag_2"\n  ADD PRIMARY KEY/);
   });
 
-  /* ============================
-     NEW: regression tests for FK type
-     ============================ */
+
 
   it("SELF 1:N nullable: ADD COLUMN всегда содержит тип (никаких: ADD COLUMN \"parent_id\" ;)", () => {
     const node = ent("n", "Entity", [attr("id", "UUID", true)]);
@@ -161,7 +158,7 @@ describe("sql/postgres: generatePostgresSQL (current behavior)", () => {
     const C = ent("c", "C", [attr("id", "UUID", true)]);
 
     const rAB = rel("rAB", A, B, "one-to-many", { fk: { column: "a_id", notNull: true } } as any);
-    const rBC = rel("rBC", B, C, "one-to-many", { fk: { column: "b_id", notNull: false } } as any); // nullable
+    const rBC = rel("rBC", B, C, "one-to-many", { fk: { column: "b_id", notNull: false } } as any); 
     const rCA = rel("rCA", C, A, "one-to-many", { fk: { column: "c_id", notNull: true } } as any);
 
     const sql = norm(generatePostgresSQL([A, B, C], [rAB, rBC, rCA]));

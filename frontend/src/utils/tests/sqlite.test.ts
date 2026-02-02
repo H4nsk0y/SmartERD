@@ -70,7 +70,7 @@ describe("sql/sqlite: generateSQLiteSQL (current behavior)", () => {
 
     const sql = norm(generateSQLiteSQL([author, book], [r]));
 
-    expect(sql).not.toMatch(/"author_id"/); // не должно “переехать” в snake_case
+    expect(sql).not.toMatch(/"author_id"/); 
     expect(sql).toMatch(/CREATE TABLE "Book"[\s\S]*"authorId" TEXT NOT NULL/);
     expect(sql).toMatch(/FOREIGN KEY \("authorId"\) REFERENCES "Author"\("id"\) ON DELETE CASCADE/);
     expect(sql).toMatch(/CREATE INDEX "idx_Book_authorId" ON "Book"\("authorId"\);/);
@@ -106,7 +106,7 @@ describe("sql/sqlite: generateSQLiteSQL (current behavior)", () => {
   it("M:N (явная пустая link-таблица): текущая логика переименовывает в *_2 (uniqueName)", () => {
     const user = ent("u", "User", [attr("id", "UUID", true)]);
     const role = ent("r", "Role", [attr("id", "UUID", true)]);
-    const link = ent("l", "user_role", []); // пустая явная link-таблица
+    const link = ent("l", "user_role", []); 
     const mm = rel("mm2", user, role, "many-to-many");
 
     const sql = norm(generateSQLiteSQL([user, role, link], [mm]));

@@ -1,0 +1,16 @@
+{
+  "entities": [
+    {
+      "id": "e_user",
+      "name": "User",
+      "x": 40,
+      "y": 40,
+      "attributes": [
+        { "id": "a_user_id", "name": "id", "type": "UUID", "isPrimaryKey": true, "unique": true, "notNull": true },
+        { "id": "a_user_email_1", "name": "email", "type": "VARCHAR(120)", "notNull": true },
+        { "id": "a_user_email_2", "name": "email", "type": "VARCHAR(120)", "notNull": true }
+      ]
+    }
+  ],
+  "relationships": []
+}
